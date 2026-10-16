@@ -105,28 +105,55 @@ if (typeof globalThis.chrome === 'undefined' && typeof globalThis.browser !== 'u
   }
   document.addEventListener('submit', e => capture(e.target), true);
   document.addEventListener('click', e => {
+    if (e.target.closest?.('.pv-bar,.pv-menu,.pv-icon')) return;
     const b = e.target.closest?.('button,input[type=submit],[role=button]');
     if (b && pwFields().some(p => p.value)) capture(b.form || null);
   }, true);
   document.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target?.tagName === 'INPUT' && pwFields().some(p => p.value)) capture(e.target.form || null); }, true);
 
+  const handled = new Set();
+  const credKey = c => c.host + '\u0000' + c.username + '\u0000' + c.password;
+  function withTimeout(p, ms) {
+    return Promise.race([p, new Promise(r => setTimeout(() => r({ ok: false, error: '超时，请检查 SSH 隧道和服务端' }), ms))]);
+  }
+  function toast(text, ms) {
+    const t = document.createElement('div'); t.className = 'pv-bar'; t.textContent = text;
+    document.body.appendChild(t); setTimeout(() => t.remove(), ms || 2500);
+  }
   function showSaveBar(cred) {
-    document.querySelector('.pv-bar')?.remove();
+    const key = credKey(cred);
+    if (handled.has(key)) return;
+    document.querySelectorAll('.pv-bar').forEach(b => b.remove());
     const bar = document.createElement('div'); bar.className = 'pv-bar';
     const t = document.createElement('div');
     t.textContent = (cred.isUpdate ? '更新' : '保存') + '到密码保险箱？' + (cred.username ? '（' + cred.username + ' @ ' + cred.host + '）' : '（' + cred.host + '）');
     const ok = document.createElement('button'); ok.textContent = cred.isUpdate ? '更新' : '保存';
     const no = document.createElement('button'); no.textContent = '不了'; no.className = 'pv-sec';
-    const msg = document.createElement('div');
-    ok.onclick = async () => {
-      ok.disabled = true;
-      const r = await send({ type: 'confirmSave', ...cred });
-      if (r.ok) { msg.textContent = r.data.updated ? '已更新：' + r.data.name : '已保存：' + r.data.name; setTimeout(() => bar.remove(), 2000); }
-      else { msg.textContent = r.error === 'LOCKED' ? '保险箱已锁定，请先点击工具栏图标解锁后再点保存。' : '保存失败：' + r.error; ok.disabled = false; }
+    const close = () => { handled.add(key); bar.remove(); };
+    ok.onclick = async e => {
+      e.stopPropagation();
+      ok.disabled = true; no.disabled = true; ok.textContent = '保存中…';
+      let r;
+      try { r = await withTimeout(send({ type: 'confirmSave', ...cred }), 10000); }
+      catch (err) { r = { ok: false, error: String(err && err.message || err) }; }
+      if (r && r.ok) {
+        close();
+        toast(r.data && r.data.updated ? '已更新：' + r.data.name : '已保存：' + ((r.data && r.data.name) || cred.host));
+      } else {
+        const err = r && r.error;
+        if (err === 'LOCKED') {
+          // 保持待保存状态，解锁后可再次提示
+          bar.remove();
+          toast('保险箱已锁定：请点工具栏图标解锁，然后重新提交一次表单即可保存。', 5000);
+        } else {
+          close();
+          toast('保存失败：' + (err || '未知错误'), 5000);
+        }
+      }
     };
-    no.onclick = () => bar.remove();
-    bar.append(t, ok, no, msg); document.body.appendChild(bar);
-    setTimeout(() => bar.isConnected && !ok.disabled && bar.remove(), 60000);
+    no.onclick = e => { e.stopPropagation(); close(); };
+    bar.append(t, ok, no); document.body.appendChild(bar);
+    setTimeout(() => { if (bar.isConnected && !ok.disabled) bar.remove(); }, 60000);
   }
   // 页面跳转后（同标签页）取回待保存的凭据并提示
   async function checkPending() { const r = await send({ type: 'takePending' }); if (r.ok && r.data) showSaveBar(r.data); }
@@ -139,7 +166,7 @@ if (typeof globalThis.chrome === 'undefined' && typeof globalThis.browser !== 'u
   });
   setTimeout(() => { if (lastCapture) checkPending(); }, 0);
   document.addEventListener('submit', () => setTimeout(checkPending, 1500), true);
-  addEventListener('click', () => { if (lastCapture) setTimeout(checkPending, 2000); }, true);
+  addEventListener('click', e => { if (e.target.closest?.('.pv-bar,.pv-menu,.pv-icon')) return; if (lastCapture) setTimeout(checkPending, 2000); }, true);
 
   checkPending();
   decorate();
