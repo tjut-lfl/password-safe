@@ -5,7 +5,8 @@ dist/
 *.pem
 *.key
 *.dat
-vault*
-!internal/vault/
+/vault*
+vault*.dat
+vault*.lockout
 .DS_Store
 node_modules/
