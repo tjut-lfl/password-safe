@@ -1,0 +1,8 @@
+<!doctype html><html lang="zh-Hans"><head><meta charset="utf-8"><title>密码保险箱 设置</title><link rel="stylesheet" href="popup.css"><style>body{width:auto;max-width:560px;margin:30px auto}</style></head><body>
+<h2>密码保险箱 设置</h2>
+<label>服务地址（通过 SSH 隧道转发到本机）</label>
+<input id="url" placeholder="http://127.0.0.1:8787">
+<div class="row"><button id="save">保存</button><button id="test" class="sec">测试连接</button></div>
+<p id="out" class="muted"></p>
+<p class="muted">默认 http://127.0.0.1:8787。若改用其他端口（如 http://127.0.0.1:18787）只需修改这里；127.0.0.1 / localhost 以外的地址需要额外授权，且不建议使用。</p>
+<script src="options.js"></script></body></html>

@@ -1,0 +1,8 @@
+.pv-icon{position:absolute;z-index:2147483646;width:18px;height:18px;border-radius:50%;background:#2563eb;color:#fff;font:bold 11px/18px sans-serif;text-align:center;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,.3)}
+.pv-menu{position:absolute;z-index:2147483647;min-width:220px;max-width:320px;background:#fff;color:#111;border:1px solid #ccc;border-radius:6px;box-shadow:0 4px 14px rgba(0,0,0,.2);font:13px sans-serif;padding:4px 0}
+.pv-menu div{padding:6px 10px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pv-menu div:hover{background:#eef2ff}
+.pv-menu .pv-muted{color:#888;cursor:default}
+.pv-bar{position:fixed;top:12px;right:12px;z-index:2147483647;background:#fff;color:#111;border:1px solid #2563eb;border-radius:8px;box-shadow:0 4px 18px rgba(0,0,0,.25);font:13px sans-serif;padding:10px 12px;max-width:340px}
+.pv-bar button{margin:8px 6px 0 0;padding:4px 10px;border-radius:4px;border:1px solid #2563eb;background:#2563eb;color:#fff;cursor:pointer}
+.pv-bar button.pv-sec{background:#fff;color:#2563eb}

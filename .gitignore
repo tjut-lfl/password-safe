@@ -1,0 +1,11 @@
+bin/
+dist/
+*.zip
+*.csv
+*.pem
+*.key
+*.dat
+vault*
+!internal/vault/
+.DS_Store
+node_modules/
