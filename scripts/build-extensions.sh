@@ -2,7 +2,7 @@
 # 打包浏览器扩展：chromium（Chrome/Edge/Brave/Opera/Vivaldi）与 firefox
 set -euo pipefail
 cd "$(dirname "$0")/.."
-VER="${VERSION:-v0.3.0-beta}"
+VER="${VERSION:-v0.3.1-beta}"
 OUT=dist; mkdir -p "$OUT"; tmp=$(mktemp -d)
 cp -r extension "$tmp/chromium"; rm -rf "$tmp/chromium/README.md" "$tmp/chromium/README.zh-CN.md" "$tmp/chromium/test" "$tmp/chromium/embed.go"
 (cd "$tmp/chromium" && zip -qr "$OLDPWD/$OUT/password-safe-extension-chromium-$VER.zip" .)

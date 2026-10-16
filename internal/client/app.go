@@ -100,6 +100,19 @@ func (a *App) BackupHint() string {
 	return T("backup_tip")
 }
 
+// originOK 校验本地设置页的 POST 来源。
+// 注意：在 no-referrer 等策略下浏览器会发送 "Origin: null"，此时以 Sec-Fetch-Site 为准。
+func (a *App) originOK(r *http.Request) bool {
+	o := r.Header.Get("Origin")
+	switch o {
+	case "", fmt.Sprintf("http://127.0.0.1:%d", a.port), fmt.Sprintf("http://localhost:%d", a.port):
+		return true
+	case "null":
+		return r.Header.Get("Sec-Fetch-Site") == "same-origin"
+	}
+	return false
+}
+
 func (a *App) handler() http.Handler {
 	mux := http.NewServeMux()
 	ctl := func(f func() any) http.HandlerFunc {
@@ -121,8 +134,8 @@ func (a *App) handler() http.Handler {
 		return func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self'; form-action 'self'")
 			w.Header().Set("X-Frame-Options", "DENY")
-			w.Header().Set("Referrer-Policy", "no-referrer")
-			if r.Method == http.MethodPost && r.Header.Get("Origin") != "" && r.Header.Get("Origin") != fmt.Sprintf("http://127.0.0.1:%d", a.port) {
+			w.Header().Set("Referrer-Policy", "same-origin")
+			if r.Method == http.MethodPost && !a.originOK(r) {
 				http.Error(w, "bad origin", 403)
 				return
 			}
