@@ -11,6 +11,14 @@
   <h4>搜索结果</h4><ul id="searchList"></ul>
   <div class="row"><button id="genBtn" class="sec">生成强密码并填入当前页</button></div>
   <p id="genOut" class="muted"></p>
+  <div class="row"><button id="exportBtn" class="sec">导出备份</button><button id="backupBtn" class="sec">服务端备份</button></div>
+  <div id="exportBox" hidden>
+    <input id="exPass" type="password" placeholder="导出口令（至少 8 位，可用主密码）" autocomplete="new-password">
+    <input id="exPass2" type="password" placeholder="再次输入口令" autocomplete="new-password">
+    <div class="row"><button id="exGo">下载加密备份</button><button id="exCancel" class="sec">取消</button></div>
+    <p class="muted">文件为加密 JSON 包，导入时需要该口令：password-safe import -f 文件</p>
+  </div>
+  <p id="exOut" class="muted"></p>
 </section>
 <p id="msg" class="err"></p>
 <footer><a href="options.html" target="_blank">设置</a></footer>

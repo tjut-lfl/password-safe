@@ -137,6 +137,13 @@ const handlers = {
     await setPending(sender.tab.id, cred);
     return { ok: true };
   },
+  async exportBundle({ passphrase }) {
+    if (!passphrase || passphrase.length < 8) throw new Error('导出口令至少 8 位');
+    const d = await api('/api/v1/export', { method: 'POST', body: { passphrase } });
+    if (d.format !== 'password-safe-export') throw new Error('服务端返回的不是加密导出包');
+    return { json: JSON.stringify(d, null, 2), entries: d.entries || 0 };
+  },
+  async backupNow() { return await api('/api/v1/backup', { method: 'POST', body: {} }); },
   async takePending(_m, sender) { return (await popPending(sender.tab.id)) || null; },
   async confirmSave(cred) { return await saveCredential(cred); },
 };

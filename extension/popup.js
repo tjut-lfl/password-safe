@@ -44,4 +44,27 @@ $('genBtn').onclick = async () => {
   try { await chrome.tabs.sendMessage(tab.id, { type: 'pvGenerateFill', password: g.data.password }); $('genOut').textContent = '已填入（来源：' + (g.data.source === 'server' ? '服务端' : '本地') + '）。提交表单后会询问是否保存。'; }
   catch (_) { showErr('此页面无法填充'); }
 };
+$('exportBtn').onclick = () => { $('exportBox').hidden = !$('exportBox').hidden; $('exPass').focus(); };
+$('exCancel').onclick = () => { $('exPass').value = $('exPass2').value = ''; $('exportBox').hidden = true; };
+$('exGo').onclick = async () => {
+  const p = $('exPass').value, p2 = $('exPass2').value;
+  if (p.length < 8) return showErr('导出口令至少 8 位');
+  if (p !== p2) return showErr('两次输入的口令不一致');
+  $('exGo').disabled = true;
+  const r = await send({ type: 'exportBundle', passphrase: p });
+  $('exGo').disabled = false; $('exPass').value = $('exPass2').value = '';
+  if (!r.ok) return showErr('导出失败：' + r.error);
+  const ts = new Date().toISOString().replace(/[-:]/g, '').replace('T', '-').slice(0, 15);
+  const url = URL.createObjectURL(new Blob([r.data.json], { type: 'application/json' }));
+  const a = document.createElement('a'); a.href = url; a.download = 'password-safe-export-' + ts + '.json';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+  $('exportBox').hidden = true; $('msg').textContent = '';
+  $('exOut').textContent = '已下载加密备份（' + r.data.entries + ' 条）。请妥善保存并记住口令。';
+};
+$('backupBtn').onclick = async () => {
+  const r = await send({ type: 'backupNow' });
+  if (!r.ok) return showErr('备份失败：' + r.error);
+  $('exOut').textContent = '服务端已备份：' + r.data.file;
+};
 render();

@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -22,8 +22,9 @@ import (
 )
 
 var (
-	vaultPath  string
-	listenAddr string
+	vaultPath   string
+	listenAddr  string
+	keepBackups int
 )
 
 // Version 通过 -ldflags "-X github.com/tjut-lfl/password-safe/internal/cli.Version=..." 注入。
@@ -32,12 +33,14 @@ var Version = "dev"
 // Execute 入口。
 func Execute() {
 	root := &cobra.Command{
-		Use:     "password-safe",
-		Version: Version,
-		Short:   "本地密码保险箱（CLI + localhost HTTP API）",
-		Long:    "Argon2id KEK + AES-256-GCM DEK 保护账号密码的本地保险箱。支持 TOTP、剪贴板、交互 shell、搜索与树形列表。",
+		Use:          "password-safe",
+		Version:      Version,
+		Short:        "本地密码保险箱（CLI + localhost HTTP API）",
+		SilenceUsage: true,
+		Long:         "Argon2id KEK + AES-256-GCM DEK 保护账号密码的本地保险箱。支持 TOTP、剪贴板、交互 shell、搜索与树形列表。",
 	}
 	root.PersistentFlags().StringVar(&vaultPath, "vault", "", "保险箱文件路径（默认 ~/.password-safe/vault.dat）")
+	root.PersistentFlags().IntVar(&keepBackups, "keep-backups", 0, "每类自动备份保留份数（默认 10，或环境变量 PASSWORD_SAFE_BACKUP_KEEP）")
 
 	root.AddCommand(
 		cmdInit(),
@@ -60,6 +63,9 @@ func Execute() {
 		cmdShell(),
 		cmdServe(),
 		cmdStatus(),
+		cmdBackup(),
+		cmdBackups(),
+		cmdRestore(),
 	)
 
 	if err := root.Execute(); err != nil {
@@ -83,7 +89,23 @@ func openVault() (*vault.Vault, error) {
 	if err != nil {
 		return nil, err
 	}
-	return vault.New(p), nil
+	v := vault.New(p)
+	v.AppVersion = Version
+	v.KeepBackups = keepBackups
+	if v.KeepBackups <= 0 {
+		if n, err := strconv.Atoi(os.Getenv("PASSWORD_SAFE_BACKUP_KEEP")); err == nil && n > 0 {
+			v.KeepBackups = n
+		}
+	}
+	if os.Getenv("PASSWORD_SAFE_NO_AUTO_BACKUP") == "1" {
+		v.DisableAutoBackup = true
+	}
+	if bp, err := v.EnsureVersionBackup(); err != nil {
+		fmt.Fprintln(os.Stderr, "警告: 新版本首次运行备份失败:", err)
+	} else if bp != "" {
+		fmt.Fprintln(os.Stderr, "检测到新版本首次运行，已自动备份保险箱:", bp)
+	}
+	return v, nil
 }
 
 var stdinReader = bufio.NewReader(os.Stdin)
@@ -511,58 +533,6 @@ func cmdGenerate() *cobra.Command {
 	return c
 }
 
-func cmdExport() *cobra.Command {
-	var out string
-	c := &cobra.Command{
-		Use:   "export",
-		Short: "导出加密保险箱文件副本",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			v, err := openVault()
-			if err != nil {
-				return err
-			}
-			if out == "" {
-				out = filepath.Join(".", "vault-export.dat")
-			}
-			if err := v.ExportEncrypted(out); err != nil {
-				return err
-			}
-			fmt.Println("已导出（仍为加密态）:", out)
-			return nil
-		},
-	}
-	c.Flags().StringVarP(&out, "out", "o", "", "输出路径")
-	return c
-}
-
-func cmdImport() *cobra.Command {
-	var file string
-	c := &cobra.Command{
-		Use:   "import",
-		Short: "从 CSV 导入（列: name,username,password,url,notes,tags[,totp_secret]）",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			if file == "" {
-				return fmt.Errorf("需要 --file")
-			}
-			f, err := os.Open(file)
-			if err != nil {
-				return err
-			}
-			defer f.Close()
-			return withUnlocked(func(v *vault.Vault) error {
-				n, err := v.ImportCSV(f)
-				if err != nil {
-					return err
-				}
-				fmt.Printf("已导入 %d 条\n", n)
-				return nil
-			})
-		},
-	}
-	c.Flags().StringVarP(&file, "file", "f", "", "CSV 文件路径")
-	return c
-}
-
 func cmdPasswd() *cobra.Command {
 	return &cobra.Command{
 		Use:     "passwd",
@@ -634,7 +604,7 @@ func cmdMigrate() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			fmt.Println("已迁移到 v2（KEK/DEK）")
+			fmt.Println("已迁移到 v2（KEK/DEK）；迁移前的原文件已备份到", v.BackupDir())
 			return nil
 		},
 	}

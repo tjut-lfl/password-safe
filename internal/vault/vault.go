@@ -3,7 +3,7 @@ package vault
 
 import (
 	"crypto/rand"
-	"encoding/csv"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -34,6 +34,8 @@ var (
 	ErrNotFound       = errors.New("条目不存在")
 	ErrInvalidName    = errors.New("条目名称不能为空")
 	ErrNeedsMigrate   = errors.New("保险箱为旧格式，请运行 migrate")
+	// ErrNewerFormat 保险箱由更新版本创建：只读打开，拒绝写入以免降级损坏。
+	ErrNewerFormat = errors.New("保险箱格式版本高于本程序支持的版本，已拒绝写入（只读）；请升级 password-safe 后再修改")
 )
 
 // Entry 一条账号凭据（解密后内存形态）。
@@ -48,6 +50,8 @@ type Entry struct {
 	TOTPSecret string    `json:"totp_secret,omitempty"` // base32 密钥，用于 2FA
 	CreatedAt  time.Time `json:"created_at"`
 	UpdatedAt  time.Time `json:"updated_at"`
+	// Extra 保留未来版本写入、本版本不认识的字段，写回时原样保存。
+	Extra map[string]json.RawMessage `json:"-"`
 }
 
 // EntryMeta 列表用元数据（不含密码与 TOTP 密钥）。
@@ -64,8 +68,9 @@ type EntryMeta struct {
 
 // plainData 解密后的保险箱内容。
 type plainData struct {
-	Version int     `json:"version"`
-	Entries []Entry `json:"entries"`
+	Version int                        `json:"version"`
+	Entries []Entry                    `json:"entries"`
+	Extra   map[string]json.RawMessage `json:"-"`
 }
 
 // fileEnvelope 磁盘上的加密信封。
@@ -93,6 +98,23 @@ type Vault struct {
 	salt     []byte
 	format   int // 磁盘信封版本
 	data     plainData
+
+	// AppVersion 当前程序版本，用于备份文件命名与“新版本首次运行”备份。
+	AppVersion string
+	// KeepBackups 每类自动备份保留份数（<=0 时用 DefaultKeepBackups）。
+	KeepBackups int
+	// DisableAutoBackup 关闭写入前的自动备份（仅测试用）。
+	DisableAutoBackup bool
+
+	diskSum [32]byte // 解锁/上次写入时磁盘文件的 SHA-256，用于检测外部修改（如 restore）
+}
+
+func fileSum(path string) [32]byte {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return [32]byte{}
+	}
+	return sha256.Sum256(b)
 }
 
 func newID() string {
@@ -225,6 +247,7 @@ func (v *Vault) Unlock(masterPassword []byte) error {
 		ver = 1 // 旧文件可能缺 version
 	}
 
+	// ver > FormatVersion：尝试按 v2 方式只读打开（persist 会拒绝写入）。
 	if ver >= 2 {
 		if env.WrappedDEKB64 == "" {
 			crypto.Zero(kek)
@@ -271,6 +294,7 @@ func (v *Vault) Unlock(masterPassword []byte) error {
 	v.format = ver
 	v.data = data
 	v.unlocked = true
+	v.diskSum = fileSum(v.path)
 	lockout.Clear(v.path)
 	return nil
 }
@@ -300,6 +324,9 @@ func (v *Vault) MigrateToV2(masterPassword []byte) error {
 	}
 	if v.format >= FormatVersion {
 		return fmt.Errorf("已是 v%d 格式，无需迁移", v.format)
+	}
+	if _, err := v.createBackupLocked("pre-migrate"); err != nil {
+		return fmt.Errorf("迁移前备份失败，已中止: %w", err)
 	}
 
 	salt, err := crypto.GenerateSalt()
@@ -344,6 +371,9 @@ func (v *Vault) ChangeMasterPassword(newPassword []byte) error {
 	defer v.mu.Unlock()
 	if !v.unlocked {
 		return ErrLocked
+	}
+	if v.format > FormatVersion {
+		return ErrNewerFormat
 	}
 	if v.format < 2 {
 		return fmt.Errorf("请先 migrate 到 v2 后再更换主密码（passwd 仅重包装 DEK）")
@@ -711,93 +741,14 @@ func (v *Vault) ExportEncrypted(destPath string) error {
 	return os.WriteFile(destPath, raw, 0o600)
 }
 
-// ImportCSV 从 CSV 导入（列：name,username,password,url,notes,tags[,totp_secret]）。
-// 首行若为表头则自动跳过。tags 用分号或逗号分隔。
+// ImportCSV 从 CSV 导入（兼容旧接口；不去重）。
 func (v *Vault) ImportCSV(r io.Reader) (int, error) {
-	v.mu.Lock()
-	defer v.mu.Unlock()
-	if !v.unlocked {
-		return 0, ErrLocked
-	}
-	cr := csv.NewReader(r)
-	cr.FieldsPerRecord = -1
-	records, err := cr.ReadAll()
+	entries, err := ParseCSV(r)
 	if err != nil {
-		return 0, fmt.Errorf("CSV 解析失败: %w", err)
-	}
-	if len(records) == 0 {
-		return 0, nil
-	}
-	start := 0
-	// 默认列顺序: name,username,password,url,notes,tags,totp_secret
-	col := map[string]int{"name": 0, "username": 1, "password": 2, "url": 3, "notes": 4, "tags": 5, "totp": 6}
-	if looksLikeHeader(records[0]) {
-		start = 1
-		col = map[string]int{}
-		alias := map[string]string{
-			"name": "name", "title": "name", "entry": "name",
-			"username": "username", "login": "username", "user": "username", "login_username": "username",
-			"password": "password", "login_password": "password",
-			"url": "url", "login_uri": "url", "website": "url",
-			"note": "notes", "notes": "notes", "extra": "notes",
-			"tags": "tags", "folder": "tags", "grouping": "tags",
-			"totp": "totp", "totp_secret": "totp", "login_totp": "totp", "otpauth": "totp",
-		}
-		for i, h := range records[0] {
-			k := strings.ToLower(strings.TrimSpace(strings.TrimPrefix(h, "\ufeff")))
-			if f, ok := alias[k]; ok {
-				if _, dup := col[f]; !dup {
-					col[f] = i
-				}
-			}
-		}
-	}
-	get := func(row []string, f string) string {
-		i, ok := col[f]
-		if !ok || i >= len(row) {
-			return ""
-		}
-		return row[i]
-	}
-	added := 0
-	for _, row := range records[start:] {
-		if len(row) == 0 {
-			continue
-		}
-		username, password, url := get(row, "username"), get(row, "password"), get(row, "url")
-		notes, tagsStr, totp := get(row, "notes"), get(row, "tags"), get(row, "totp")
-		name := strings.TrimSpace(get(row, "name"))
-		if name == "" {
-			name = hostOf(url)
-		}
-		if name == "" {
-			continue
-		}
-		if username != "" && nameTaken(v.data.Entries, name) {
-			name = name + "/" + username
-		}
-		var tags []string
-		for _, t := range splitTags(tagsStr) {
-			tags = append(tags, t)
-		}
-		now := time.Now().UTC()
-		e := Entry{
-			ID: newID(), Name: name, Username: username, Password: password,
-			URL: url, Notes: notes, Tags: tags, TOTPSecret: totp,
-			CreatedAt: now, UpdatedAt: now,
-		}
-		v.data.Entries = append(v.data.Entries, e)
-		added++
-	}
-	if added == 0 {
-		return 0, nil
-	}
-	if err := v.persist(); err != nil {
-		// 回滚本次追加
-		v.data.Entries = v.data.Entries[:len(v.data.Entries)-added]
 		return 0, err
 	}
-	return added, nil
+	res, err := v.ImportEntries(entries, false)
+	return res.Added, err
 }
 
 func looksLikeHeader(row []string) bool {
@@ -843,6 +794,15 @@ func splitTags(s string) []string {
 }
 
 func (v *Vault) persist() error {
+	if v.format > FormatVersion {
+		return ErrNewerFormat
+	}
+	if v.diskSum != ([32]byte{}) && fileSum(v.path) != v.diskSum {
+		return fmt.Errorf("保险箱文件已被外部修改（例如 restore 或另一进程），为避免覆盖已拒绝写入；请重新解锁")
+	}
+	if err := v.autoBackupBeforeWrite(); err != nil {
+		return fmt.Errorf("写入前自动备份失败（未修改保险箱）: %w", err)
+	}
 	if v.format >= 2 {
 		// 需要重新包装：用现有 salt/params，但 wrapped_dek 已在文件中。
 		// 为简单起见，每次 persist 时用当前 salt 重新读 wrapped 不方便；
@@ -930,6 +890,7 @@ func (v *Vault) writeEnvelope(env fileEnvelope) error {
 		return err
 	}
 	_ = os.Chmod(v.path, 0o600)
+	v.diskSum = sha256.Sum256(out)
 	return nil
 }
 

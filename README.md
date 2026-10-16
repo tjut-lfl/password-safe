@@ -1,4 +1,4 @@
-# Password Safe — 自建密码保险箱（测试版 v0.1.0-beta）
+# Password Safe — 自建密码保险箱（测试版 v0.2.0-beta）
 
 > ⚠️ **测试版，尚未经过安全审计。** 请勿作为唯一的密码存储，务必保留加密备份（`password-safe export`）。主密码遗忘后数据无法找回。
 
@@ -107,6 +107,74 @@ password-safe migrate   # 输入主密码，升级为 v2
 
 也可：`export` 备份 → 新库 `init` → `import` CSV（需先自行从旧库导出明文 CSV）。
 
+## 备份与升级
+
+### 自动备份（无需操作）
+
+备份文件都是**加密态**（与保险箱同一主密码），放在 `~/.password-safe/backups/`（目录 0700，文件 0600）：
+
+| 时机 | 文件名 |
+|------|--------|
+| 新版本程序第一次运行 | `vault-<时间>-<版本>-upgrade.dat` |
+| 每天第一次修改保险箱前 | `vault-<时间>-<版本>-daily.dat` |
+| `migrate` 之前 | `vault-<时间>-<版本>-pre-migrate.dat` |
+| `restore` 覆盖之前 | `vault-<时间>-<版本>-pre-restore.dat` |
+| `backup` 命令 / 扩展「服务端备份」 | `vault-<时间>-<版本>-manual.dat` |
+
+每类默认保留最近 10 份，可用 `--keep-backups N` 或环境变量 `PASSWORD_SAFE_BACKUP_KEEP=N` 调整。
+
+另外两道保险：
+- 如果保险箱是**更新版本**创建的，旧程序只读打开，**拒绝写入**，不会降级损坏；
+- 保险箱文件被外部修改（例如 `restore`）后，正在运行的 `serve` 会拒绝用旧内存数据覆盖，需重新解锁。
+
+### 导出
+
+```bash
+password-safe export                                    # 加密保险箱副本（同一主密码）
+password-safe export --format json-encrypted -o b.json  # 可移植加密包，单独设导出口令（推荐长期保存）
+password-safe export --format json-encrypted --use-master -o b.json  # 用主密码加密
+password-safe export --format csv --plaintext -o x.csv  # 明文，Google/Chrome 格式 name,url,username,password,note
+password-safe export --format csv-full --plaintext      # 明文，额外 tags,totp_secret
+password-safe export --format json --plaintext          # 明文 JSON
+password-safe export --format bitwarden --plaintext     # 明文 Bitwarden JSON
+```
+
+明文导出必须加 `--plaintext`，终端里还要输入 `yes`；用完立刻 `shred -u 文件`。
+
+导入时自动识别格式：
+
+```bash
+password-safe import -f b.json --skip-duplicates   # 按 域名+用户名 跳过已有条目
+```
+
+浏览器扩展弹窗里的「导出备份」会下载加密 JSON 包（需要设置口令），「服务端备份」会在服务器上立即做一份备份。
+
+### 推荐升级步骤
+
+```bash
+password-safe backup                             # 1. 手动备份一份
+password-safe export --format json-encrypted -o ~/pre-upgrade.json   # 可选：再导出可移植包
+sudo install -m 755 password-safe /usr/local/bin/password-safe       # 2. 替换程序（路径按实际安装位置）
+password-safe --version
+systemctl --user restart password-safe           # 3. 重启服务（会自动做 upgrade 备份）
+password-safe verify && password-safe list       # 4. 校验 + 确认条目都在
+```
+
+然后在扩展里重新解锁一次。
+
+### 从备份恢复
+
+```bash
+password-safe backups                                   # 列出备份
+systemctl --user stop password-safe
+password-safe restore vault-20261016-143000-v0.2.0-beta-manual.dat   # 可写文件名或完整路径
+systemctl --user start password-safe
+password-safe verify
+```
+
+`restore` 会先用主密码校验备份可解密，再把当前保险箱备份为 `pre-restore`，最后覆盖。恢复错了还能再 restore 回 `pre-restore` 那份。
+
+
 ## 功能一览
 
 | 命令 | 说明 |
@@ -121,7 +189,9 @@ password-safe migrate   # 输入主密码，升级为 v2
 | `get -c` / `--copy` | 复制密码到剪贴板，约 30s 后清空（不回显密码） |
 | `totp <name>` | 输出当前 6 位 TOTP |
 | `generate` | 随机密码；`--memorable` 口令短语 |
-| `import` / `export` | CSV 导入 / 加密文件导出 |
+| `export --format …` | encrypted / json-encrypted / csv / csv-full / json / bitwarden |
+| `import` | 自动识别以上所有格式，`--skip-duplicates` 去重 |
+| `backup` / `backups` / `restore` | 手动备份 / 列出备份 / 从备份恢复 |
 | `shell` | 交互 REPL（解锁一次） |
 | `serve` | localhost HTTP API |
 | `status` | 路径与格式版本 |
@@ -203,7 +273,8 @@ password-safe serve
 | GET | `/api/v1/totp/{id}` | 当前 TOTP |
 | POST | `/api/v1/verify` | 会话内完整性确认 |
 | POST | `/api/v1/generate` | 生成密码 / 口令短语 |
-| GET | `/api/v1/export` | 下载加密 vault |
+| POST | `/api/v1/export` | 返回加密 JSON 包（body: `{"passphrase":"…"}`，从不返回明文） |
+| POST | `/api/v1/backup` | 在服务端立即创建一份加密备份 |
 
 ## systemd
 

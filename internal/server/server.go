@@ -6,8 +6,10 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"io"
 	"net"
 	"net/http"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -48,6 +50,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/v1/totp/", s.auth(s.handleTOTP))
 	mux.HandleFunc("/api/v1/generate", s.auth(s.handleGenerate))
 	mux.HandleFunc("/api/v1/export", s.auth(s.handleExport))
+	mux.HandleFunc("/api/v1/backup", s.auth(s.handleBackup))
 	mux.HandleFunc("/api/v1/status", s.handleStatus)
 	mux.HandleFunc("/api/v1/verify", s.auth(s.handleVerify))
 	return mux
@@ -425,18 +428,50 @@ func (s *Server) handleGenerate(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]string{"password": pw, "type": "random"})
 }
 
+// handleExport 只返回加密 JSON 包（json-encrypted），从不返回明文。
+// 请求体：{"passphrase":"..."}（至少 8 位；可以填主密码）。
 func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
+	if r.Method != http.MethodPost {
 		writeErr(w, 405, "方法不允许")
 		return
 	}
-	raw, err := openRead(s.vault.Path())
-	if err != nil {
-		writeErr(w, 400, err.Error())
+	var body struct {
+		Passphrase string `json:"passphrase"`
+	}
+	if err := json.NewDecoder(io.LimitReader(r.Body, 4096)).Decode(&body); err != nil || len(body.Passphrase) < 8 {
+		writeErr(w, 400, "需要 passphrase 字段（至少 8 个字符）")
 		return
 	}
-	w.Header().Set("Content-Type", "application/octet-stream")
-	w.Header().Set("Content-Disposition", "attachment; filename=vault.dat")
+	entries, err := s.vault.Entries()
+	if err != nil {
+		writeErr(w, 401, err.Error())
+		return
+	}
+	pass := []byte(body.Passphrase)
+	data, err := vault.ExportBundle(entries, pass, s.vault.AppVersion, "passphrase")
+	crypto.Zero(pass)
+	if err != nil {
+		writeErr(w, 500, err.Error())
+		return
+	}
+	name := "password-safe-export-" + time.Now().Format("20060102-150405") + ".json"
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.Header().Set("Content-Disposition", "attachment; filename="+name)
+	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(200)
-	_, _ = w.Write(raw)
+	_, _ = w.Write(data)
+}
+
+// handleBackup 在服务端备份目录立即创建一份加密备份。
+func (s *Server) handleBackup(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeErr(w, 405, "方法不允许")
+		return
+	}
+	p, err := s.vault.CreateBackup(vault.BackupManual)
+	if err != nil {
+		writeErr(w, 500, err.Error())
+		return
+	}
+	writeJSON(w, 200, map[string]any{"ok": true, "file": filepath.Base(p), "dir": s.vault.BackupDir()})
 }
