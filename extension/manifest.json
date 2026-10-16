@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "密码保险箱",
-  "version": "0.2.0", "version_name": "0.2.0-beta",
+  "version": "0.2.1", "version_name": "0.2.1-beta",
   "description": "连接自建 password-safe 服务：自动填充、生成强密码、保存账号。",
   "default_locale": "zh_CN",
   "permissions": ["storage", "activeTab", "scripting"],

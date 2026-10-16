@@ -19,6 +19,28 @@ if (typeof globalThis.chrome === 'undefined' && typeof globalThis.browser !== 'u
     }
     return scope.querySelector('input[autocomplete=username],input[type=email]');
   }
+  // ---- 分步登录：只有用户名、没有密码框的页面 ----
+  const USER_HINT = /user|email|e-mail|mail|login|account|acct|phone|mobile|identifier|signin|账号|帐号|用户|邮箱|手机/i;
+  const NEXT_HINT = /next|continue|proceed|weiter|suivant|siguiente|下一步|继续|繼續|次へ|다음|sign.?in|log.?in|登录|登入/i;
+  function looksLikeUser(el) {
+    const t = (el.type || 'text').toLowerCase();
+    if (!['text', 'email', 'tel', ''].includes(t)) return false;
+    const ac = (el.autocomplete || '').toLowerCase();
+    if (/username|email|webauthn/.test(ac)) return true;
+    if (/one-time-code|off|search/.test(ac) && !USER_HINT.test(el.name + el.id)) return false;
+    if (t === 'email') return true;
+    return USER_HINT.test([el.name, el.id, el.placeholder, el.getAttribute('aria-label') || ''].join(' '));
+  }
+  function hasNextButton(scope) {
+    return [...scope.querySelectorAll('button,input[type=submit],input[type=button],[role=button]')].filter(visible)
+      .some(b => NEXT_HINT.test((b.innerText || b.value || b.getAttribute('aria-label') || '') + ' ' + (b.id || '')));
+  }
+  function userOnlyFields() {
+    if (pwFields().length) return [];
+    return [...document.querySelectorAll('input')].filter(el => visible(el) && looksLikeUser(el))
+      .filter(el => el.autocomplete === 'username' || hasNextButton(el.form || document))
+      .slice(0, 1);
+  }
   function isSignup(pw) {
     const scope = pw.form || document;
     if (pw.autocomplete === 'new-password') return true;
@@ -36,14 +58,32 @@ if (typeof globalThis.chrome === 'undefined' && typeof globalThis.browser !== 'u
     el.dispatchEvent(new Event('change', { bubbles: true }));
     el.blur();
   }
+  // 返回 {ok, step}：step = 'both' | 'username'（第 1 步）| 'password'（第 2 步）
   function fill(username, password) {
     const pws = pwFields();
     const pw = pws.find(p => !isSignup(p)) || pws[0];
-    if (!pw) return false;
+    if (!pw) {
+      const u = userOnlyFields()[0];
+      if (!u || !username) return { ok: false };
+      setValue(u, username);
+      return { ok: true, step: 'username' };
+    }
     const u = userFieldFor(pw);
-    if (u && username) setValue(u, username);
+    // 密码页上站点预填的用户名（含隐藏字段）不覆盖；只填可见且为空/不同的用户名框
+    if (u && username && visible(u) && u.value.trim() !== username && !(u.value && u.readOnly)) setValue(u, username);
     setValue(pw, password);
-    return true;
+    return { ok: true, step: u && visible(u) ? 'both' : 'password' };
+  }
+  // 密码框出现时：若本标签页第 1 步已选过条目且密码框为空，自动填入
+  const autoFilled = new WeakSet();
+  async function autoFillStep(pw) {
+    if (autoFilled.has(pw) || isSignup(pw)) return;
+    autoFilled.add(pw);
+    const r = await send({ type: 'stepCredential', url: location.href });
+    if (!r.ok || !r.data || !r.data.password) return;
+    if (!pw.isConnected || !visible(pw) || pw.value) return;
+    setValue(pw, r.data.password);
+    toast('已为 ' + (r.data.username || host) + ' 填入密码', 2000);
   }
   function fillNew(password) {
     const pw = document.activeElement?.type === 'password' ? document.activeElement : pwFields()[0];
@@ -65,10 +105,14 @@ if (typeof globalThis.chrome === 'undefined' && typeof globalThis.browser !== 'u
     menu.style.left = (r.left + scrollX - 200) + 'px'; menu.style.top = (r.bottom + scrollY + 4) + 'px';
     document.body.appendChild(menu);
     menu.appendChild(item('加载中…', null, true));
-    const signup = isSignup(pw);
-    const res = await send({ type: 'matchesFor', url: location.href });
+    const signup = pw.type === 'password' && isSignup(pw);
+    const [res, st] = await Promise.all([send({ type: 'matchesFor', url: location.href }), send({ type: 'stepInfo', url: location.href })]);
     if (!menu) return;
     menu.textContent = '';
+    if (res.ok && st.ok && st.data && st.data.entryId && pw.type === 'password') {
+      const e = res.data.entries.find(x => x.id === st.data.entryId);
+      if (e) res.data.entries = [e, ...res.data.entries.filter(x => x !== e)];
+    }
     if (signup) menu.appendChild(item('🔑 生成强密码并填入', async () => { const g = await send({ type: 'generate' }); if (g.ok) fillNew(g.data.password); }));
     if (!res.ok) menu.appendChild(item('无法连接保险箱服务', null, true));
     else if (res.data.locked) menu.appendChild(item('保险箱已锁定：点击工具栏图标解锁', null, true));
@@ -77,7 +121,8 @@ if (typeof globalThis.chrome === 'undefined' && typeof globalThis.browser !== 'u
   }
   const decorated = new WeakSet();
   function decorate() {
-    pwFields().forEach(pw => {
+    pwFields().forEach(pw => autoFillStep(pw));
+    pwFields().concat(userOnlyFields()).forEach(pw => {
       if (decorated.has(pw)) return; decorated.add(pw);
       const icon = document.createElement('div'); icon.className = 'pv-icon'; icon.textContent = '🔒'; icon.title = '密码保险箱';
       const place = () => { if (!pw.isConnected || !visible(pw)) { icon.style.display = 'none'; return; } const r = pw.getBoundingClientRect(); icon.style.display = ''; icon.style.left = (r.right + scrollX - 24) + 'px'; icon.style.top = (r.top + scrollY + (r.height - 18) / 2) + 'px'; };
@@ -97,13 +142,21 @@ if (typeof globalThis.chrome === 'undefined' && typeof globalThis.browser !== 'u
     const signup = isSignup(all[0]);
     // 改密表单：取最后一个（新密码）；登录：取第一个
     const pw = signup ? all[all.length - 1] : all[0];
-    const u = userFieldFor(all[0]);
+    let u = userFieldFor(all[0]);
+    if (!u || !u.value) u = (all[0].form || document).querySelector('input[autocomplete=username],input[name*=user i],input[name*=email i],input[type=email]') || u;
     const cred = { host, username: u ? u.value.trim() : '', password: pw.value, url: location.origin };
     if (lastCapture && lastCapture.password === cred.password && lastCapture.username === cred.username) return;
     lastCapture = cred;
     send({ type: 'offerSave', ...cred });
   }
-  document.addEventListener('submit', e => capture(e.target), true);
+  function captureUser(scope) {
+    if (pwFields().length) return;
+    const u = userOnlyFields().find(el => !scope || !el.form || el.form === scope) || userOnlyFields()[0];
+    if (u && u.value.trim()) send({ type: 'rememberUsername', username: u.value.trim(), url: location.href });
+  }
+  document.addEventListener('submit', e => { captureUser(e.target); capture(e.target); }, true);
+  document.addEventListener('click', e => { if (e.target.closest?.('.pv-bar,.pv-menu,.pv-icon')) return; if (e.target.closest?.('button,input[type=submit],[role=button]')) captureUser(null); }, true);
+  document.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target?.tagName === 'INPUT') captureUser(e.target.form || null); }, true);
   document.addEventListener('click', e => {
     if (e.target.closest?.('.pv-bar,.pv-menu,.pv-icon')) return;
     const b = e.target.closest?.('button,input[type=submit],[role=button]');
@@ -161,7 +214,7 @@ if (typeof globalThis.chrome === 'undefined' && typeof globalThis.browser !== 'u
   const origSend = send;
   chrome.runtime.onMessage.addListener((m, sender, reply) => {
     if (sender.id !== chrome.runtime.id) return;
-    if (m.type === 'pvFill') reply({ ok: fill(m.username, m.password) });
+    if (m.type === 'pvFill') reply(fill(m.username, m.password));
     if (m.type === 'pvGenerateFill') { fillNew(m.password); reply({ ok: true }); }
   });
   setTimeout(() => { if (lastCapture) checkPending(); }, 0);

@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><title>Multi-step login test / 分步登录测试</title>
+<style>body{font:15px sans-serif;max-width:420px;margin:40px auto}input{display:block;width:100%;margin:8px 0;padding:8px}</style></head>
+<body>
+<h2>Sign in / 登录</h2>
+<p>Mode: <a href="?mode=spa">SPA (same page)</a> · <a href="?mode=nav">Navigation (new page)</a></p>
+<div id="app"></div>
+<script>
+const mode = new URLSearchParams(location.search).get('mode') || 'spa';
+const step = new URLSearchParams(location.search).get('step') || '1';
+const app = document.getElementById('app');
+function step1() {
+  app.innerHTML = '<form id="f1"><label>Email or phone / 邮箱或手机</label>' +
+    '<input type="email" name="identifier" autocomplete="username" id="identifierId">' +
+    '<button type="submit">Next / 下一步</button></form>';
+  document.getElementById('f1').onsubmit = e => {
+    e.preventDefault();
+    const u = document.getElementById('identifierId').value;
+    if (mode === 'nav') location.href = '?mode=nav&step=2&u=' + encodeURIComponent(u);
+    else setTimeout(() => step2(u), 400);
+  };
+}
+function step2(u) {
+  app.innerHTML = '<form id="f2"><p>Welcome / 欢迎 <b id="who"></b></p>' +
+    '<input type="hidden" name="username" autocomplete="username">' +
+    '<label>Password / 密码</label><input type="password" name="Passwd" autocomplete="current-password">' +
+    '<button type="submit">Sign in / 登录</button></form>';
+  document.getElementById('who').textContent = u;
+  document.querySelector('input[name=username]').value = u;
+  document.getElementById('f2').onsubmit = e => { e.preventDefault(); app.innerHTML = '<p>✅ Signed in / 已登录</p>'; };
+}
+if (step === '2') step2(new URLSearchParams(location.search).get('u') || ''); else step1();
+</script></body></html>

@@ -2,11 +2,11 @@
 # 打包浏览器扩展：chromium（Chrome/Edge/Brave/Opera/Vivaldi）与 firefox
 set -euo pipefail
 cd "$(dirname "$0")/.."
-VER="${VERSION:-v0.2.0-beta}"
+VER="${VERSION:-v0.2.1-beta}"
 OUT=dist; mkdir -p "$OUT"; tmp=$(mktemp -d)
-cp -r extension "$tmp/chromium"; rm -f "$tmp/chromium/README.md"
+cp -r extension "$tmp/chromium"; rm -rf "$tmp/chromium/README.md" "$tmp/chromium/test"
 (cd "$tmp/chromium" && zip -qr "$OLDPWD/$OUT/password-safe-extension-chromium-$VER.zip" .)
-cp -r extension "$tmp/firefox"; rm -f "$tmp/firefox/README.md"
+cp -r extension "$tmp/firefox"; rm -rf "$tmp/firefox/README.md" "$tmp/firefox/test"
 python3 - "$tmp/firefox/manifest.json" <<'PY'
 import json,sys
 p=sys.argv[1];m=json.load(open(p))

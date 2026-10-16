@@ -1,27 +1,30 @@
-# 密码保险箱 浏览器扩展（Chrome / Edge）
+# Password Safe browser extension (Chrome / Edge / Firefox)
 
-本扩展是 `password-safe` 服务的浏览器客户端：
-- 登录页自动填充账号密码（输入框右侧的 🔒 图标，或工具栏弹窗中点击条目）
-- 注册/改密页一键生成强密码，同时填入「密码」和「确认密码」
-- 提交表单后询问「保存到密码保险箱？」，**确认后**才新建/更新条目
-- 主密码只用于解锁；会话令牌只保存在浏览器内存（`chrome.storage.session`），关闭浏览器即失效，30 分钟后自动锁定
+**English** | [简体中文](README.zh-CN.md)
+
+This extension is the browser client of the `password-safe` service:
+- Autofill on login pages (🔒 icon on the right of the field, or click an entry in the toolbar popup)
+- One-click strong password on sign-up / change-password pages, filling both "password" and "confirm password"
+- **Multi-step login** (username page first, password page next — Google, Microsoft, AWS, Apple…): pick an entry on the username page to fill only the username; the extension remembers the choice for that tab (memory only, expires after 5 minutes, no password stored). When the password field appears (same page, or after navigating to another subdomain of the same site) the entry's password is filled automatically, or pick it from 🔒
+- After a form is submitted it asks "Save to Password Safe?" and only creates/updates the entry **after you confirm**
+- The master password is only used to unlock; the session token lives in browser memory (`chrome.storage.session`), is gone when the browser closes, and auto-locks after 30 minutes
 
 ```
-浏览器扩展 ──http──▶ 127.0.0.1:8787（本机） ══SSH 隧道══▶ EC2 上的 127.0.0.1:8787（password-safe serve）
+Extension ──http──▶ 127.0.0.1:8787 (local) ══SSH tunnel══▶ 127.0.0.1:8787 on the server (password-safe serve)
 ```
-服务端始终只监听 `127.0.0.1`，**不要**在 AWS 安全组开放 8787 端口，只需开放 22。
+The server always listens on `127.0.0.1` only. **Do not** open port 8787 in your cloud firewall/security group; only 22.
 
 ---
 
-## 一、服务器端：用 systemd 常驻运行 serve
+## 1. Server: run `serve` with systemd
 
-`serve` 启动时**不需要**主密码，保险箱处于锁定状态；由扩展（或 curl）调用 `/api/v1/unlock` 解锁。所以可以放心交给 systemd。
+`serve` starts **without** the master password, in the locked state; the extension (or curl) unlocks it via `/api/v1/unlock`, so it is safe to run under systemd.
 
-1. SSH 登录服务器，先初始化保险箱（只做一次）：
+1. SSH to the server and initialize the vault (once):
    ```bash
    password-safe init
    ```
-2. 创建用户级服务：
+2. Create a user service:
    ```bash
    mkdir -p ~/.config/systemd/user
    cat > ~/.config/systemd/user/password-safe.service <<'UNIT'
@@ -40,48 +43,48 @@
    UNIT
    systemctl --user daemon-reload
    systemctl --user enable --now password-safe
-   sudo loginctl enable-linger ubuntu      # 让服务在你退出 SSH 后、开机后也运行
+   sudo loginctl enable-linger ubuntu      # keep running after you log out and after reboot
    systemctl --user status password-safe
-   curl -s http://127.0.0.1:8787/health     # 应返回 {"status":"ok",...}
+   curl -s http://127.0.0.1:8787/health     # should return {"status":"ok",...}
    ```
-   查看日志：`journalctl --user -u password-safe -f`
+   Logs: `journalctl --user -u password-safe -f`
 
-> 注意：服务端同一时间只有一个会话令牌。在命令行用 curl 解锁、或在另一台电脑的扩展里解锁，都会让当前扩展的会话失效，重新解锁即可。点「锁定」会把服务端整个保险箱锁上。
+> Note: the server has a single session token at a time. Unlocking with curl or from another computer invalidates the current extension session; just unlock again. "Lock" locks the whole vault on the server.
 
 ---
 
-## 二、本机：建立 SSH 隧道
+## 2. Your computer: open the SSH tunnel
 
-把下面的 `key.pem` 换成你的私钥路径。隧道建立后，本机 `http://127.0.0.1:8787` 就等于服务器上的服务。
+Replace `key.pem` with your key path. Once the tunnel is up, local `http://127.0.0.1:8787` is the server's service.
 
-### Windows（PowerShell，系统自带 OpenSSH）
+### Windows (PowerShell, built-in OpenSSH)
 ```powershell
-ssh -i C:\Users\你\key.pem -N -L 8787:127.0.0.1:8787 -o ServerAliveInterval=30 -o ExitOnForwardFailure=yes ubuntu@<your-server-ip>
+ssh -i C:\Users\you\key.pem -N -L 8787:127.0.0.1:8787 -o ServerAliveInterval=30 -o ExitOnForwardFailure=yes ubuntu@<your-server-ip>
 ```
-私钥权限报错时：`icacls key.pem /inheritance:r /grant:r "$($env:USERNAME):R"`
+If the key permission check fails: `icacls key.pem /inheritance:r /grant:r "$($env:USERNAME):R"`
 
-保持常驻（断线自动重连）：新建 `tunnel.ps1`
+Keep it running (auto-reconnect): create `tunnel.ps1`
 ```powershell
 while ($true) {
-  ssh -i C:\Users\你\key.pem -N -L 8787:127.0.0.1:8787 -o ServerAliveInterval=30 -o ServerAliveCountMax=3 -o ExitOnForwardFailure=yes ubuntu@<your-server-ip>
+  ssh -i C:\Users\you\key.pem -N -L 8787:127.0.0.1:8787 -o ServerAliveInterval=30 -o ServerAliveCountMax=3 -o ExitOnForwardFailure=yes ubuntu@<your-server-ip>
   Start-Sleep 5
 }
 ```
-再用「任务计划程序」→ 创建任务 → 触发器「登录时」→ 操作：`powershell -WindowStyle Hidden -File C:\路径\tunnel.ps1`。
+Then Task Scheduler → Create Task → trigger "At log on" → action `powershell -WindowStyle Hidden -File C:\path\tunnel.ps1`.
 
 ### macOS / Linux
 ```bash
 chmod 600 ~/key.pem
 ssh -i ~/key.pem -N -L 8787:127.0.0.1:8787 -o ServerAliveInterval=30 -o ExitOnForwardFailure=yes ubuntu@<your-server-ip>
 ```
-保持常驻：安装 autossh（`brew install autossh` / `sudo apt install autossh`）
+Keep it running with autossh (`brew install autossh` / `sudo apt install autossh`):
 ```bash
 autossh -M 0 -f -N -i ~/key.pem -L 8787:127.0.0.1:8787 \
   -o ServerAliveInterval=30 -o ServerAliveCountMax=3 -o ExitOnForwardFailure=yes ubuntu@<your-server-ip>
 ```
-Linux 开机自启可写成 systemd 用户服务（`ExecStart=/usr/bin/autossh -M 0 -N ...`，去掉 `-f`）；macOS 可用 launchd 或放进「登录项」脚本。
+On Linux this can be a systemd user service (`ExecStart=/usr/bin/autossh -M 0 -N ...`, without `-f`); on macOS use launchd or a login item.
 
-推荐在 `~/.ssh/config` 里简化：
+Simplify with `~/.ssh/config`:
 ```
 Host vault
   HostName <your-server-ip>
@@ -91,53 +94,56 @@ Host vault
   ServerAliveInterval 30
   ExitOnForwardFailure yes
 ```
-之后只需 `ssh -N vault`。
+Then just `ssh -N vault`.
 
-本机 8787 被占用时，可改用 `-L 18787:127.0.0.1:8787`，并在扩展「设置」里把地址改为 `http://127.0.0.1:18787`。
-
----
-
-## 三、安装扩展（加载已解压的扩展）
-
-1. 解压 `password-safe-extension.zip` 到一个固定目录（以后别删）
-2. **Chrome**：地址栏打开 `chrome://extensions` → 右上角打开「开发者模式」→「加载已解压的扩展程序」→ 选该目录
-3. **Edge**：打开 `edge://extensions` → 左侧打开「开发人员模式」→「加载解压缩的扩展」→ 选该目录
-4. 把扩展图标固定到工具栏；右键图标 →「选项」→ 点「测试连接」，显示「连接成功」即可
+If local port 8787 is taken, use `-L 18787:127.0.0.1:8787` and set `http://127.0.0.1:18787` in the extension settings.
 
 ---
 
-## 四、使用
+## 3. Install the extension (load unpacked)
 
-- **解锁**：点击工具栏图标，输入主密码 →「解锁」
-- **登录**：在登录页点击密码框右侧的 🔒 → 选择账号；或在弹窗「当前网站」列表里点击条目
-- **搜索**：弹窗顶部输入关键词，点击结果即填充到当前页
-- **注册新账号**：在注册页点 🔒 →「生成强密码并填入」（优先用服务端生成，连不上时用浏览器本地安全随机数生成），密码和确认密码同时填好
-- **保存**：提交登录/注册表单后，页面右上角出现「保存到密码保险箱？」，点「保存」才会写入。条目名为网站域名（同域多个账号时为 `域名/用户名`）；同站同用户名已存在则改为「更新」密码
-- **锁定**：弹窗点「锁定」；30 分钟后也会自动锁定
+1. Unzip the extension zip into a permanent folder (don't delete it later)
+2. **Chrome**: open `chrome://extensions` → enable "Developer mode" (top right) → "Load unpacked" → choose the folder
+3. **Edge**: open `edge://extensions` → enable "Developer mode" (left) → "Load unpacked" → choose the folder
+4. Pin the icon to the toolbar; right-click → "Options" → "Test connection" should say success
 
-## 五、安全说明与限制
-- 扩展不含任何远程代码，不记录密码；与服务端的通信只在后台脚本中进行，网页拿不到令牌
-- 隧道内是明文 HTTP，但只在本机回环和加密的 SSH 通道中传输
-- 由于扩展后台带有 `127.0.0.1` 的主机权限，服务端**无需**开启 CORS
-- 匹配规则基于域名（条目的 URL 或名称与当前网站域名一致或为其子域）
-- iframe 内的登录框、Shadow DOM 中的输入框、多步登录（先用户名后密码）支持有限；不提供 TOTP 自动填充（可在命令行 `password-safe totp 名称`）
-- 若生成密码后没有提交表单，保险箱里不会有这个密码——请务必在保存提示中点「保存」
+---
 
-## 各浏览器安装（v0.2.0-beta）
+## 4. Usage
 
-从 Release 下载对应 zip 并解压到固定目录（安装后不要删除该目录）：
+- **Unlock**: click the toolbar icon, enter the master password → "Unlock"
+- **Log in**: click 🔒 on the right of the password field → choose an account; or click an entry under "Current site" in the popup
+- **Multi-step login**: on the username page, click 🔒 next to the username/email field (or the entry in the popup) → only the username is filled; press "Next" and the password is filled on the next step. In the popup, the remembered entry is listed first
+- **Search**: type in the popup search box; click a result to fill the current page
+- **Sign up**: on a sign-up page click 🔒 → "Generate strong password" (server-generated, or local secure random if the server is unreachable); both password fields are filled
+- **Save**: after submitting a login/sign-up form, "Save to Password Safe?" appears at the top right; click "Save" to write it. The entry is named after the domain (`domain/username` when a site has several accounts); an existing same-site same-username entry is "Updated". For multi-step logins the username typed on step 1 is combined with the step-2 password
+- **Lock**: click "Lock" in the popup; auto-locks after 30 minutes
 
-| 浏览器 | 包 | 安装方式 |
+## 5. Security notes & limits
+- No remote code, passwords are never logged; only the background script talks to the server, pages never see the token
+- Plain HTTP inside the tunnel, but only over loopback and the encrypted SSH channel
+- The extension has host permission for `127.0.0.1`, so the server needs **no** CORS
+- Matching is domain-based (entry URL or name equals the site domain, a subdomain, or the same registrable domain)
+- Limited support for login forms inside iframes and Shadow DOM; multi-step cross-domain matching uses registrable-domain heuristics plus a few built-in aliases (microsoft/google/apple/amazon) — for other flows spanning different domains pick the entry in the popup. No TOTP autofill (use `password-safe totp name`)
+- If you generate a password but never submit the form, it is not in the vault — always click "Save" on the prompt
+
+## Per-browser install (v0.2.1-beta)
+
+Download the zip from the Release and unzip it to a permanent folder:
+
+| Browser | Package | How |
 |---|---|---|
-| Chrome | chromium | `chrome://extensions` → 开发者模式 → 加载已解压的扩展程序 |
-| Edge | chromium | `edge://extensions` → 开发人员模式 → 加载解压缩的扩展 |
-| Brave | chromium | `brave://extensions` → 开发者模式 → 加载已解压的扩展程序 |
-| Opera | chromium | `opera://extensions` → 开发者模式 → 加载已解压的扩展程序 |
-| Vivaldi | chromium | `vivaldi://extensions` → 开发者模式 → 加载已解压的扩展程序 |
-| Firefox 115+ | firefox | `about:debugging#/runtime/this-firefox` → 临时载入附加组件 → 选择 zip 或 `manifest.json`（重启后失效）；长期使用需 Developer Edition/Nightly 中将 `xpinstall.signatures.required` 设为 false，或自行提交 AMO 签名 |
+| Chrome | chromium | `chrome://extensions` → Developer mode → Load unpacked |
+| Edge | chromium | `edge://extensions` → Developer mode → Load unpacked |
+| Brave | chromium | `brave://extensions` → Developer mode → Load unpacked |
+| Opera | chromium | `opera://extensions` → Developer mode → Load unpacked |
+| Vivaldi | chromium | `vivaldi://extensions` → Developer mode → Load unpacked |
+| Firefox 115+ | firefox | `about:debugging#/runtime/this-firefox` → Load Temporary Add-on → choose the zip or `manifest.json` (removed on restart); for permanent use set `xpinstall.signatures.required` to false in Developer Edition/Nightly, or get it signed on AMO |
 
-Firefox 首次使用时，请在「附加组件 → 权限」中允许访问 `127.0.0.1`。
+In Firefox, allow access to `127.0.0.1` under Add-ons → Permissions on first use.
 
-**Safari**：未提供构建。需在 macOS 上用 Xcode 的 `xcrun safari-web-extension-converter extension/` 转换并签名。
+**Safari**: not built. Convert on macOS with `xcrun safari-web-extension-converter extension/` and sign it.
 
-自行打包：`bash scripts/build-extensions.sh`（输出到 `dist/`）。
+Build yourself: `bash scripts/build-extensions.sh` (output in `dist/`).
+
+Manual multi-step login test: see [test/README.md](test/README.md).

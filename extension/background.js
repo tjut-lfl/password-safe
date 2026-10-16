@@ -48,10 +48,52 @@ function matches(entry, host) {
     return h === host || host.endsWith('.' + h) || h.endsWith('.' + host) || h.split('/').includes(host);
   });
 }
+// 可注册域名（启发式，无公共后缀表）+ 常见多域名登录的同站别名
+const MULTI_TLD = /\.(com|net|org|gov|edu|co|ac)\.[a-z]{2}$|\.(co\.uk|com\.cn|com\.au|co\.jp)$/;
+const SITE_ALIASES = {
+  'live.com': 'microsoft', 'microsoftonline.com': 'microsoft', 'microsoft.com': 'microsoft', 'office.com': 'microsoft', 'outlook.com': 'microsoft',
+  'google.com': 'google', 'youtube.com': 'google', 'gmail.com': 'google',
+  'apple.com': 'apple', 'icloud.com': 'apple',
+  'amazon.com': 'amazon', 'aws.amazon.com': 'amazon', 'amazonaws.com': 'amazon', 'awsapps.com': 'amazon',
+};
+function registrable(host) {
+  host = (host || '').replace(/^www\./, '').toLowerCase();
+  if (!host || /^[\d.]+$/.test(host) || !host.includes('.')) return host;
+  const parts = host.split('.');
+  const n = MULTI_TLD.test(host) ? 3 : 2;
+  return parts.slice(-n).join('.');
+}
+function siteKey(host) { const r = registrable(host); return SITE_ALIASES[r] || r; }
+function matchesSite(entry, host) {
+  if (matches(entry, host)) return true;
+  const k = siteKey(host); if (!k) return false;
+  const eh = hostOf(entry.url || '') || (/^[a-z0-9.-]+\.[a-z]{2,}$/.test((entry.name || '').split('/')[0].toLowerCase()) ? entry.name.split('/')[0].toLowerCase() : '');
+  return !!eh && siteKey(eh) === k;
+}
 async function entriesForHost(host) {
   const { entries = [] } = await api('/api/v1/entries');
-  return entries.filter(e => matches(e, host));
+  return entries.filter(e => matchesSite(e, host));
 }
+
+// 分步登录：记住本标签页在第 1 步选择的条目 / 输入的用户名（只存会话内存，5 分钟过期；不存密码）
+const STEP_TTL_MS = 5 * 60 * 1000;
+async function setStep(tabId, host, data) {
+  if (tabId == null) return;
+  const k = 'step_' + tabId;
+  const old = (await chrome.storage.session.get(k))[k];
+  const site = siteKey(host);
+  const base = old && old.site === site && Date.now() - old.at < STEP_TTL_MS ? old : {};
+  await chrome.storage.session.set({ [k]: { ...base, ...data, site, at: Date.now() } });
+}
+async function getStep(tabId, host) {
+  if (tabId == null) return null;
+  const k = 'step_' + tabId;
+  const s = (await chrome.storage.session.get(k))[k];
+  if (!s) return null;
+  if (Date.now() - s.at > STEP_TTL_MS || s.site !== siteKey(host)) { await chrome.storage.session.remove(k); return null; }
+  return s;
+}
+chrome.tabs?.onRemoved?.addListener(id => chrome.storage.session.remove(['step_' + id, 'pending_' + id]));
 function localGenerate(len = 20) {
   const sets = ['abcdefghijkmnopqrstuvwxyz', 'ABCDEFGHJKLMNPQRSTUVWXYZ', '23456789', '!@#$%^&*-_=+?'];
   const all = sets.join('');
@@ -68,7 +110,7 @@ async function popPending(tabId) { const k = 'pending_' + tabId; const r = await
 
 async function saveCredential({ host, username, password, url }) {
   const { entries = [] } = await api('/api/v1/entries');
-  const same = entries.find(e => matches(e, host) && (e.username || '') === (username || ''));
+  const same = entries.find(e => matchesSite(e, host) && (e.username || '') === (username || ''));
   if (same) {
     await api('/api/v1/entries/' + encodeURIComponent(same.id), { method: 'PUT', body: { password, url: same.url || url } });
     return { updated: true, name: same.name };
@@ -111,10 +153,30 @@ const handlers = {
     if (!(await getSession())) return { locked: true, entries: [] };
     return { locked: false, entries: await entriesForHost(hostOf(url || sender.tab?.url)) };
   },
-  async fillEntry({ id, tabId }, sender) {
+  async fillEntry({ id, tabId, url }, sender) {
     const e = await api('/api/v1/entries/' + encodeURIComponent(id));
     const target = tabId ?? sender.tab?.id;
-    await chrome.tabs.sendMessage(target, { type: 'pvFill', username: e.username, password: e.password });
+    const r = await chrome.tabs.sendMessage(target, { type: 'pvFill', username: e.username, password: e.password });
+    // 记住所选条目，下一步（密码页）可直接填
+    await setStep(target, hostOf(url || sender.tab?.url || ''), { entryId: e.id, username: e.username || '' });
+    if (r && r.ok === false) throw new Error('此页面没有可填写的账号/密码输入框');
+    return { ok: true, step: r && r.step };
+  },
+  // 密码页：取第 1 步记住的条目
+  async stepInfo({ url, tabId }, sender) {
+    const t = tabId ?? sender.tab?.id;
+    const s = await getStep(t, hostOf(url || sender.tab?.url || ''));
+    return s ? { entryId: s.entryId || null, username: s.username || '' } : null;
+  },
+  async stepCredential({ url }, sender) {
+    const s = await getStep(sender.tab?.id, hostOf(url || sender.tab?.url || ''));
+    if (!s || !s.entryId || !(await getSession())) return null;
+    const e = await api('/api/v1/entries/' + encodeURIComponent(s.entryId));
+    return { username: e.username || '', password: e.password };
+  },
+  async rememberUsername({ username, url }, sender) {
+    if (!username) return { ok: false };
+    await setStep(sender.tab?.id, hostOf(url || sender.tab?.url || ''), { typedUsername: username });
     return { ok: true };
   },
   async generate({ length = 20 } = {}) {
@@ -122,6 +184,11 @@ const handlers = {
     catch (_) { return { password: localGenerate(length), source: 'local' }; }
   },
   async offerSave(cred, sender) {
+    // 分步登录：密码页没有用户名时，补上第 1 步输入/选择的用户名
+    if (!cred.username) {
+      const s = await getStep(sender.tab?.id, cred.host);
+      if (s) cred.username = s.typedUsername || s.username || '';
+    }
     // 已有相同凭据则不打扰
     if (await getSession()) {
       try {

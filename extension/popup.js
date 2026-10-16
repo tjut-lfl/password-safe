@@ -8,7 +8,7 @@ function showErr(e) { $('msg').textContent = e === 'LOCKED' ? '会话已过期�
 function li(e) {
   const el = document.createElement('li');
   el.textContent = e.name; const s = document.createElement('small'); s.textContent = e.username || '(无用户名)'; el.appendChild(s);
-  el.onclick = async () => { const r = await send({ type: 'fillEntry', id: e.id, tabId: tab.id }); if (r.ok) window.close(); else showErr(r.error.includes('Receiving end') ? '此页面无法填充' : r.error); };
+  el.onclick = async () => { const r = await send({ type: 'fillEntry', id: e.id, tabId: tab.id, url: tab.url }); if (r.ok) window.close(); else showErr(r.error.includes('Receiving end') ? '此页面无法填充' : r.error); };
   return el;
 }
 function list(ul, entries, empty) { ul.textContent = ''; if (!entries.length) { const x = document.createElement('li'); x.className = 'muted'; x.textContent = empty; ul.appendChild(x); } entries.forEach(e => ul.appendChild(li(e))); }
@@ -23,6 +23,12 @@ async function render() {
     const m = await send({ type: 'matchesFor', url: tab?.url });
     let host = ''; try { host = new URL(tab.url).hostname; } catch (_) {}
     $('siteTitle').textContent = '当前网站 ' + host;
+    const st = await send({ type: 'stepInfo', tabId: tab?.id, url: tab?.url });
+    if (m.ok && st.ok && st.data && st.data.entryId) {
+      // 分步登录：第 1 步选过的条目排在最前 / Multi-step login: remembered entry first
+      const i = m.data.entries.findIndex(x => x.id === st.data.entryId);
+      if (i > 0) m.data.entries.unshift(...m.data.entries.splice(i, 1));
+    }
     if (m.ok) list($('siteList'), m.data.entries, '没有匹配的条目'); else showErr(m.error);
     $('q').focus();
   } else $('master').focus();
