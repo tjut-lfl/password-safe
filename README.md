@@ -1,4 +1,4 @@
-# Password Safe — Self-hosted password vault (beta v0.2.1-beta)
+# Password Safe — Self-hosted password vault (beta v0.3.0-beta)
 
 **English** | [简体中文](README.zh-CN.md)
 
@@ -37,6 +37,11 @@ sudo loginctl enable-linger $USER
 ssh -i ~/key.pem -N -L 8787:127.0.0.1:8787 ubuntu@<your-server-ip>
 ```
 Then install the browser extension, see [extension/README.md](extension/README.md).
+
+
+## Desktop client (Windows tray, v0.3.0-beta)
+
+Don't want to type the `ssh -L` command every time? Download `password-safe-client-…-windows-amd64.zip` from Releases and run `password-safe-client.exe`. It keeps the SSH tunnel up in the background (pure Go, auto-reconnect, host-key TOFU), shows status in the tray, extracts the bundled extension and opens an install guide, and lets the extension popup show tunnel status with one-click reconnect (native messaging). See [cmd/password-safe-client/README.md](cmd/password-safe-client/README.md).
 
 ## Migrating from Google Password Manager
 1. Open https://passwords.google.com/options → "Export passwords" to get a CSV.

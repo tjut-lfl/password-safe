@@ -1,4 +1,4 @@
-# Password Safe — 自建密码保险箱（测试版 v0.2.1-beta）
+# Password Safe — 自建密码保险箱（测试版 v0.3.0-beta）
 
 [English](README.md) | **简体中文**
 
@@ -37,6 +37,11 @@ sudo loginctl enable-linger $USER
 ssh -i ~/key.pem -N -L 8787:127.0.0.1:8787 ubuntu@<your-server-ip>
 ```
 然后安装浏览器扩展，见 [extension/README.zh-CN.md](extension/README.zh-CN.md)。
+
+
+## 桌面客户端（Windows 托盘，v0.3.0-beta）
+
+不想每次手敲 `ssh -L` 命令？到 Releases 下载 `password-safe-client-…-windows-amd64.zip`，运行 `password-safe-client.exe` 即可：后台维持 SSH 隧道（纯 Go、自动重连、主机密钥首次信任），托盘显示状态，自动解压内置插件并打开安装引导，插件弹窗里能看到隧道状态并一键重连（原生消息）。详见 [cmd/password-safe-client/README.zh-CN.md](cmd/password-safe-client/README.zh-CN.md)。
 
 ## 从 Google 密码管理器迁移
 1. 打开 https://passwords.google.com/options →「导出密码」，得到 CSV。

@@ -10,3 +10,7 @@ vault*.dat
 vault*.lockout
 .DS_Store
 node_modules/
+
+# 扩展签名私钥绝不入库 / never commit the extension private key
+password-safe-private/
+extension-key*.pem

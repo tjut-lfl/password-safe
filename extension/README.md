@@ -147,3 +147,6 @@ In Firefox, allow access to `127.0.0.1` under Add-ons → Permissions on first u
 Build yourself: `bash scripts/build-extensions.sh` (output in `dist/`).
 
 Manual multi-step login test: see [test/README.md](test/README.md).
+
+## Desktop client (v0.3.0-beta)
+Instead of a manual SSH tunnel you can run the Windows tray client (`password-safe-client.exe`), which keeps the tunnel up and lets the popup show tunnel status / one-click reconnect via native messaging. The extension ID is now fixed (`eaclmdmcljfnhljgbdlcejepnpnfahie`). See [../cmd/password-safe-client/README.md](../cmd/password-safe-client/README.md).

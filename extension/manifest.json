@@ -1,10 +1,11 @@
 {
   "manifest_version": 3,
   "name": "密码保险箱",
-  "version": "0.2.1", "version_name": "0.2.1-beta",
+  "version": "0.3.0", "version_name": "0.3.0-beta",
   "description": "连接自建 password-safe 服务：自动填充、生成强密码、保存账号。",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAqRNjD2Cpngq6pgioVHTZJdjOGe6BbHXSCaJ/01wqSvqlbijAEjfPCO+khTiDbdGXj9s9iOdIv8rwqZVDQdYPXWZGxRGtuk7vX/faTHgtuj1y/q83JSi1D8MYERt/vKCT2yU3KN6rMRXKhGQzy0EFqRHRAAQIkmIgtpXX1PlINSmCt68BurchJUIg3M9PuwGhzkqEz3uQuPq4ntBcbI8lFcpcfAhu2OS5quK6gWKDmJovXVA9xcH98+qp3VMGFjo7jJDLvDYVvZ/U4sosUTosAxoI0iGwhDfdoWjij2EZ3+9bNSizWghc1GGLAl+TMu6FHXzu8W1QnLcv/rVGLrdYjQIDAQAB",
   "default_locale": "zh_CN",
-  "permissions": ["storage", "activeTab", "scripting"],
+  "permissions": ["storage", "activeTab", "scripting", "nativeMessaging"],
   "host_permissions": ["http://127.0.0.1/*", "http://localhost/*"],
   "optional_host_permissions": ["http://*/*", "https://*/*"],
   "background": { "service_worker": "background.js" },

@@ -1,5 +1,26 @@
 # 更新日志 / Changelog
 
+## v0.3.0-beta（2026-10-16）
+**中文**
+- 新增 Windows 托盘客户端 `password-safe-client.exe`（`cmd/password-safe-client`）：纯 Go SSH 隧道（golang.org/x/crypto/ssh，不依赖 ssh.exe），保活、指数退避重连、经隧道的 `/api/v1/status` 健康检查；主机密钥首次信任（known_hosts），不一致即拒绝；本地端口被占用时提示
+- 托盘图标颜色/提示显示状态；菜单：状态、重新连接、插件安装引导、连接设置、立即服务端备份（提示）、打开配置、打开日志、开机自启（HKCU Run）、退出；中文界面，非中文系统显示英文
+- 首次运行打开本地设置页（127.0.0.1 随机端口 + 随机令牌）；配置 `%APPDATA%\password-safe-client\config.json`，日志滚动且不记录秘密；支持带口令的私钥（口令仅在内存）
+- 内置 Chromium 插件，解压到 `%LOCALAPPDATA%\password-safe-client\extension` 并原地更新；引导页可复制路径、直接用 chrome.exe / msedge.exe 打开扩展页
+- 原生消息主机 `com.tjut_lfl.password_safe`（Chrome + Edge，HKCU 注册），`--install` / `--uninstall`
+- 扩展：manifest 加入固定公钥，扩展 ID 固定为 `eaclmdmcljfnhljgbdlcejepnpnfahie`；Chromium 版新增 `nativeMessaging` 权限，弹窗显示隧道状态与「一键重连」，连不上时提示「请启动 Password Safe 客户端」。Firefox 版不含该权限，行为不变
+- 也提供 Linux（托盘）与 macOS（无托盘）客户端构建
+- 服务端未改动，无需升级
+
+**English**
+- New Windows tray client `password-safe-client.exe` (`cmd/password-safe-client`): pure-Go SSH tunnel (golang.org/x/crypto/ssh, no ssh.exe), keepalives, exponential-backoff reconnect, `/api/v1/status` health check through the tunnel; host-key TOFU (known_hosts) with refusal on mismatch; busy local port is reported
+- Tray icon colour/tooltip shows status; menu: Status, Reconnect, Extension guide, Connection settings, Back up server now (hint), Open config, Open log, Start at login (HKCU Run), Quit; Chinese UI with English fallback
+- First run opens a local setup page (random 127.0.0.1 port + random token); config in `%APPDATA%\password-safe-client\config.json`; rotating log with no secrets; passphrase-protected keys supported (passphrase in memory only)
+- Bundled Chromium extension extracted to `%LOCALAPPDATA%\password-safe-client\extension` and updated in place; guide page with copy-path and buttons that launch chrome.exe / msedge.exe on the extensions page
+- Native messaging host `com.tjut_lfl.password_safe` (Chrome + Edge, HKCU), `--install` / `--uninstall`
+- Extension: manifest now carries a public key so the ID is fixed (`eaclmdmcljfnhljgbdlcejepnpnfahie`); Chromium build adds `nativeMessaging`, popup shows tunnel status + one-click reconnect and "please start the Password Safe client" when unreachable. Firefox build unchanged
+- Linux (tray) and macOS (no tray) client builds also provided
+- No server changes; no server upgrade needed
+
 ## v0.2.1-beta（2026-10-16）
 **中文**
 - 扩展：支持分步登录（先用户名页、后密码页，如 Google / Microsoft / AWS / Apple）。用户名页也显示 🔒，选条目只填用户名并按标签页记住（会话内存，5 分钟过期，不存密码）；密码框出现（SPA 同页或跳转到同站子域）后自动填入，也可点 🔒 选择

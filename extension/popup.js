@@ -17,7 +17,8 @@ async function render() {
   const st = await send({ type: 'status' });
   const s = st.data || {};
   $('state').textContent = !s.reachable ? '⚠ 服务不可达' : s.unlocked ? '🔓 已解锁' : '🔒 已锁定';
-  if (!s.reachable) { $('msg').textContent = '连不上 ' + (s.base || '') + '，请确认 SSH 隧道和服务端 serve 已运行。'; }
+  if (!s.reachable) { $('msg').textContent = '连不上 ' + (s.base || '') + '。请启动 Password Safe 客户端（或确认 SSH 隧道和服务端 serve 已运行）。'; }
+  renderClient();
   $('unlockView').hidden = !!s.unlocked; $('mainView').hidden = !s.unlocked;
   if (s.unlocked) {
     const m = await send({ type: 'matchesFor', url: tab?.url });
@@ -39,7 +40,24 @@ $('unlockBtn').onclick = async () => {
   const r = await send({ type: 'unlock', password });
   $('master').value = ''; $('unlockBtn').disabled = false;
   if (!r.ok) return showErr('解锁失败：' + r.error);
-  $('msg').textContent = ''; render();
+  $('msg').textContent = ''; const CLIENT_LABEL = { connected: '🟢 隧道已连接', connecting: '🟡 隧道连接中…', disconnected: '🔴 隧道未连接' };
+async function renderClient() {
+  const r = await send({ type: 'clientStatus' });
+  const c = r.data || {};
+  if (!c.available) { $('clientBar').hidden = true; return; }
+  $('clientBar').hidden = false;
+  if (!c.running) { $('clientState').textContent = '⚠ 请启动 Password Safe 客户端'; $('clientRe').hidden = true; return; }
+  const st = c.status || {};
+  $('clientRe').hidden = false;
+  $('clientState').textContent = (CLIENT_LABEL[st.state] || st.state) + (st.state === 'connected' && !st.api_ok ? '（服务端未响应）' : '');
+  $('clientState').title = st.error || '';
+}
+$('clientRe').onclick = async () => {
+  $('clientRe').disabled = true; $('clientState').textContent = '🟡 重连中…';
+  await send({ type: 'clientReconnect' });
+  setTimeout(async () => { $('clientRe').disabled = false; await render(); }, 2500);
+};
+render();
 };
 $('master').addEventListener('keydown', e => { if (e.key === 'Enter') $('unlockBtn').click(); });
 $('lockBtn').onclick = async () => { await send({ type: 'lock' }); render(); };
@@ -72,5 +90,22 @@ $('backupBtn').onclick = async () => {
   const r = await send({ type: 'backupNow' });
   if (!r.ok) return showErr('备份失败：' + r.error);
   $('exOut').textContent = '服务端已备份：' + r.data.file;
+};
+const CLIENT_LABEL = { connected: '🟢 隧道已连接', connecting: '🟡 隧道连接中…', disconnected: '🔴 隧道未连接' };
+async function renderClient() {
+  const r = await send({ type: 'clientStatus' });
+  const c = r.data || {};
+  if (!c.available) { $('clientBar').hidden = true; return; }
+  $('clientBar').hidden = false;
+  if (!c.running) { $('clientState').textContent = '⚠ 请启动 Password Safe 客户端'; $('clientRe').hidden = true; return; }
+  const st = c.status || {};
+  $('clientRe').hidden = false;
+  $('clientState').textContent = (CLIENT_LABEL[st.state] || st.state) + (st.state === 'connected' && !st.api_ok ? '（服务端未响应）' : '');
+  $('clientState').title = st.error || '';
+}
+$('clientRe').onclick = async () => {
+  $('clientRe').disabled = true; $('clientState').textContent = '🟡 重连中…';
+  await send({ type: 'clientReconnect' });
+  setTimeout(async () => { $('clientRe').disabled = false; await render(); }, 2500);
 };
 render();

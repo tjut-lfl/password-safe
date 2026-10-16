@@ -146,3 +146,6 @@ Firefox 首次使用时，请在「附加组件 → 权限」中允许访问 `12
 自行打包：`bash scripts/build-extensions.sh`（输出到 `dist/`）。
 
 手动测试分步登录：见 [test/README.md](test/README.md)。
+
+## 桌面客户端（v0.3.0-beta）
+不想手动开 SSH 隧道，可以运行 Windows 托盘客户端 `password-safe-client.exe`：它在后台维持隧道，插件弹窗通过原生消息显示隧道状态并可一键重连。扩展 ID 现已固定为 `eaclmdmcljfnhljgbdlcejepnpnfahie`。详见 [../cmd/password-safe-client/README.zh-CN.md](../cmd/password-safe-client/README.zh-CN.md)。

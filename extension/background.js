@@ -30,7 +30,7 @@ async function api(path, { method = 'GET', body, auth = true } = {}) {
   let res;
   try {
     res = await fetch((await baseURL()) + path, { method, headers, body: body !== undefined ? JSON.stringify(body) : undefined, credentials: 'omit', cache: 'no-store' });
-  } catch (e) { throw new Error('无法连接服务（SSH 隧道是否已建立？）'); }
+  } catch (e) { throw new Error('无法连接服务：请启动 Password Safe 客户端（或确认 SSH 隧道已建立）'); }
   let data = {};
   try { data = await res.json(); } catch (_) {}
   if (res.status === 401 && auth) { await clearSession(); throw new Error('LOCKED'); }
@@ -123,6 +123,19 @@ async function saveCredential({ host, username, password, url }) {
   return { updated: false, name };
 }
 
+const NATIVE_HOST = 'com.tjut_lfl.password_safe';
+async function nativeCall(cmd) {
+  if (!chrome.runtime.sendNativeMessage) return { available: false };
+  try {
+    const r = await chrome.runtime.sendNativeMessage(NATIVE_HOST, { cmd });
+    if (!r || !r.ok) return { available: true, running: false, error: (r && r.error) || 'no_response' };
+    return { available: true, running: true, status: r.status };
+  } catch (e) {
+    // 未安装客户端 / 未注册原生主机
+    return { available: false, error: String(e && e.message || e) };
+  }
+}
+
 const handlers = {
   async status() {
     const base = await baseURL();
@@ -210,6 +223,10 @@ const handlers = {
     if (d.format !== 'password-safe-export') throw new Error('服务端返回的不是加密导出包');
     return { json: JSON.stringify(d, null, 2), entries: d.entries || 0 };
   },
+  // 桌面客户端（原生消息）：隧道状态 / 一键重连。Firefox 版无此权限时返回 available:false
+  async clientStatus() { return await nativeCall('status'); },
+  async clientReconnect() { return await nativeCall('reconnect'); },
+  async clientGuide() { return await nativeCall('guide'); },
   async backupNow() { return await api('/api/v1/backup', { method: 'POST', body: {} }); },
   async takePending(_m, sender) { return (await popPending(sender.tab.id)) || null; },
   async confirmSave(cred) { return await saveCredential(cred); },

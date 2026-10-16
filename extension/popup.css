@@ -8,3 +8,4 @@ ul{list-style:none;padding:0;margin:0;max-height:160px;overflow:auto}
 li{padding:6px;border-bottom:1px solid #eee;cursor:pointer}li:hover{background:#eef2ff}
 li small{color:#777;display:block}
 h4{margin:10px 0 4px}.muted{color:#777;font-size:12px}.err{color:#c00}
+[hidden]{display:none!important}#clientBar{justify-content:space-between;margin-bottom:6px}#clientBar button{margin-top:0}
