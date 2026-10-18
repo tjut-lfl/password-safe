@@ -690,6 +690,7 @@ func cmdStatus() *cobra.Command {
 
 func cmdServe() *cobra.Command {
 	var unlockOnStart bool
+	var ttlStr string
 	c := &cobra.Command{
 		Use:   "serve",
 		Short: "启动 localhost HTTP API（默认 127.0.0.1:8787）",
@@ -721,12 +722,21 @@ func cmdServe() *cobra.Command {
 				addr = "127.0.0.1:8787"
 			}
 			srv := server.New(v, addr)
-			fmt.Fprintf(os.Stderr, "password-safe 监听 %s （仅 localhost）\n", srv.Addr())
+			if ttlStr != "" {
+				d, err := time.ParseDuration(ttlStr)
+				if err != nil || d <= 0 {
+					return fmt.Errorf("无效 --ttl / PASSWORD_SAFE_SESSION_TTL: %q", ttlStr)
+				}
+				srv.SetTTL(d)
+			}
+			fmt.Fprintf(os.Stderr, "password-safe 监听 %s （仅 localhost，会话 %s）\n", srv.Addr(), server.FormatTTL(srv.TTL()))
 			return srv.ListenAndServe()
 		},
 	}
 	c.Flags().StringVar(&listenAddr, "addr", "127.0.0.1:8787", "监听地址（必须是 loopback）")
 	c.Flags().BoolVar(&unlockOnStart, "unlock", false, "启动时交互输入主密码并保持解锁")
+	defaultTTL := os.Getenv("PASSWORD_SAFE_SESSION_TTL")
+	c.Flags().StringVar(&ttlStr, "ttl", defaultTTL, "会话有效期（Go duration，如 6h；默认 6h 或环境变量 PASSWORD_SAFE_SESSION_TTL）")
 	return c
 }
 

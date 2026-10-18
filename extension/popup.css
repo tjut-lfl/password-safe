@@ -9,3 +9,4 @@ li{padding:6px;border-bottom:1px solid #eee;cursor:pointer}li:hover{background:#
 li small{color:#777;display:block}
 h4{margin:10px 0 4px}.muted{color:#777;font-size:12px}.err{color:#c00}
 [hidden]{display:none!important}#clientBar{justify-content:space-between;margin-bottom:6px}#clientBar button{margin-top:0}
+.warn{color:#b45309;font-size:12px;margin:6px 0}

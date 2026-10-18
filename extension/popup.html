@@ -4,7 +4,7 @@
 <section id="unlockView" hidden>
   <input id="master" type="password" placeholder="主密码" autocomplete="off">
   <button id="unlockBtn">解锁</button>
-  <p class="muted">会话 30 分钟后自动锁定；令牌只保存在浏览器内存中。</p>
+  <p class="muted">会话 6 小时后自动锁定；令牌只保存在浏览器内存中。</p>
 </section>
 <section id="mainView" hidden>
   <div class="row"><input id="q" placeholder="搜索条目"><button id="lockBtn" class="sec">锁定</button></div>
@@ -12,12 +12,22 @@
   <h4>搜索结果</h4><ul id="searchList"></ul>
   <div class="row"><button id="genBtn" class="sec">生成强密码并填入当前页</button></div>
   <p id="genOut" class="muted"></p>
-  <div class="row"><button id="exportBtn" class="sec">导出备份</button><button id="backupBtn" class="sec">服务端备份</button></div>
+  <h4>导出 / 更换设备</h4>
+  <p class="muted">换电脑前先导出；加密包可安全保存，明文 CSV 导入后请立即删除。</p>
+  <div class="row">
+    <button id="exportBtn" class="sec">加密备份包</button>
+    <button id="exportCsvBtn" class="sec">CSV（谷歌格式）</button>
+    <button id="backupBtn" class="sec">服务端备份</button>
+  </div>
   <div id="exportBox" hidden>
     <input id="exPass" type="password" placeholder="导出口令（至少 8 位，可用主密码）" autocomplete="new-password">
     <input id="exPass2" type="password" placeholder="再次输入口令" autocomplete="new-password">
     <div class="row"><button id="exGo">下载加密备份</button><button id="exCancel" class="sec">取消</button></div>
-    <p class="muted">文件为加密 JSON 包，导入时需要该口令：password-safe import -f 文件</p>
+    <p class="muted">加密 JSON 包，新设备用 password-safe import -f 导入。</p>
+  </div>
+  <div id="exportCsvBox" hidden>
+    <p class="warn">⚠ 明文 CSV 含全部密码，仅用于短期迁移到新设备。下载后请尽快导入并删除文件（含回收站）。</p>
+    <div class="row"><button id="exCsvGo">确认导出明文 CSV</button><button id="exCsvCancel" class="sec">取消</button></div>
   </div>
   <p id="exOut" class="muted"></p>
 </section>

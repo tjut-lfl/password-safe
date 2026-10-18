@@ -110,14 +110,15 @@ func cmdExport() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "export",
 		Short: "导出（encrypted | json-encrypted | csv | csv-full | json | bitwarden）",
-		Long: `导出保险箱。
+		Long: `导出保险箱（换设备 / 备份迁移也可用这里）。
   encrypted       （默认）保险箱文件原样副本，仍用同一主密码解锁
   json-encrypted  可移植加密 JSON 包（Argon2id + AES-256-GCM），任意后续版本均可 import；
-                  默认要求单独设置导出口令，--use-master 则用主密码
+                  默认要求单独设置导出口令，--use-master 则用主密码。换设备推荐此格式。
   csv / csv-full  明文 CSV（Google/Chrome 兼容表头 name,url,username,password,note；full 另含 tags,totp_secret）
   json            明文 JSON（password-safe 自有 schema）
   bitwarden       明文 Bitwarden JSON
-明文格式必须加 --plaintext，交互终端还需输入 yes 确认；文件权限 0600。`,
+明文格式必须加 --plaintext，交互终端还需输入 yes 确认；文件权限 0600。
+换设备：先 export --format json-encrypted，到新机器 password-safe import -f；明文 CSV 仅作短期迁移，用完 shred。`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			format = strings.ToLower(format)
 			if out == "" {

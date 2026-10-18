@@ -146,7 +146,7 @@ password-safe export --format json --plaintext          # 明文 JSON
 password-safe export --format bitwarden --plaintext     # 明文 Bitwarden JSON
 ```
 
-明文导出必须加 `--plaintext`，终端里还要输入 `yes`；用完立刻 `shred -u 文件`。
+明文导出必须加 `--plaintext`，终端里还要输入 `yes`；用完立刻 `shred -u 文件`。换设备推荐 `export --format json-encrypted`，到新机器 `import -f`。
 
 导入时自动识别格式：
 
@@ -154,7 +154,7 @@ password-safe export --format bitwarden --plaintext     # 明文 Bitwarden JSON
 password-safe import -f b.json --skip-duplicates   # 按 域名+用户名 跳过已有条目
 ```
 
-浏览器扩展弹窗里的「导出备份」会下载加密 JSON 包（需要设置口令），「服务端备份」会在服务器上立即做一份备份。
+浏览器扩展弹窗里的 **导出 / 更换设备** 提供：加密 JSON 备份包（自设口令）、明文谷歌格式 CSV（需确认，导入后请删除）、以及服务端备份。会话默认 **6 小时** 后自动锁定（可用 `PASSWORD_SAFE_SESSION_TTL` 或 `serve --ttl` 调整）。
 
 ### 推荐升级步骤
 
@@ -265,6 +265,7 @@ export PASSWORD_SAFE_VAULT=/secure/path/vault.dat
 ```bash
 password-safe serve
 # password-safe serve --unlock
+# password-safe serve --ttl 6h   # 或 PASSWORD_SAFE_SESSION_TTL=6h
 ```
 
 | 方法 | 路径 | 说明 |
@@ -280,7 +281,7 @@ password-safe serve
 | GET | `/api/v1/totp/{id}` | 当前 TOTP |
 | POST | `/api/v1/verify` | 会话内完整性确认 |
 | POST | `/api/v1/generate` | 生成密码 / 口令短语 |
-| POST | `/api/v1/export` | 返回加密 JSON 包（body: `{"passphrase":"…"}`，从不返回明文） |
+| POST | `/api/v1/export` | 默认加密 JSON（`{"passphrase":"…"}`）；明文 CSV：`{"format":"csv","confirm":"EXPORT"}`（需会话） |
 | POST | `/api/v1/backup` | 在服务端立即创建一份加密备份 |
 
 ## systemd

@@ -1,5 +1,24 @@
 # 更新日志 / Changelog
 
+## v0.3.2-beta（2026-10-18）
+**中文**
+- 会话默认有效期由 30 分钟改为 **6 小时**；可用环境变量 `PASSWORD_SAFE_SESSION_TTL`（如 `6h`）或 `serve --ttl 6h` 配置
+- unlock 响应的 `expires_in` / `expires_in_sec` 反映实际 TTL；浏览器扩展优先按服务端返回值锁定
+- HTTP `POST /api/v1/export`：默认仍为加密 JSON；新增明文 CSV（`{"format":"csv","confirm":"EXPORT"}`），需已解锁会话
+- 扩展弹窗「导出 / 更换设备」：加密备份包、CSV（谷歌密码格式，明文警告）、服务端备份
+- CLI `export` 说明补充换设备迁移提示
+
+**English**
+- Default session TTL changed from 30 minutes to **6 hours**; configurable via `PASSWORD_SAFE_SESSION_TTL` (e.g. `6h`) or `serve --ttl 6h`
+- Unlock response `expires_in` / `expires_in_sec` reflects the real TTL; the extension prefers the server value for auto-lock
+- HTTP `POST /api/v1/export`: default remains encrypted JSON; plaintext CSV via `{"format":"csv","confirm":"EXPORT"}` (unlocked session required)
+- Extension popup **Export / change device**: encrypted bundle, Google-format CSV (with plaintext warning), server backup
+- CLI `export` docs mention device migration
+
+## v0.3.1-beta（2026-10-16）
+**中文 / English**
+- 修复 Windows 客户端设置页提交报 `bad origin`（浏览器发送 `Origin: null`）/ fix setup page rejecting `Origin: null` on save
+
 ## v0.3.0-beta（2026-10-16）
 **中文**
 - 新增 Windows 托盘客户端 `password-safe-client.exe`（`cmd/password-safe-client`）：纯 Go SSH 隧道（golang.org/x/crypto/ssh，不依赖 ssh.exe），保活、指数退避重连、经隧道的 `/api/v1/status` 健康检查；主机密钥首次信任（known_hosts），不一致即拒绝；本地端口被占用时提示

@@ -146,7 +146,7 @@ password-safe export --format json --plaintext          # plaintext JSON
 password-safe export --format bitwarden --plaintext     # plaintext Bitwarden JSON
 ```
 
-Plaintext export requires `--plaintext` and typing `yes`; `shred -u file` right after use.
+Plaintext export requires `--plaintext` and typing `yes`; `shred -u file` right after use. For changing devices, prefer `export --format json-encrypted`, then `import -f` on the new machine.
 
 Import detects the format automatically:
 
@@ -154,7 +154,7 @@ Import detects the format automatically:
 password-safe import -f b.json --skip-duplicates   # skip entries with the same domain+username
 ```
 
-In the extension popup, "Export backup" downloads an encrypted JSON bundle (you set a passphrase) and "Server backup" creates a backup on the server immediately.
+In the extension popup, **Export / change device** offers: encrypted JSON bundle (passphrase), plaintext Google-format CSV (confirm; delete after import), and server-side backup. Session auto-locks after **6 hours** (configurable via `PASSWORD_SAFE_SESSION_TTL` / `serve --ttl`).
 
 ### Recommended upgrade steps
 
@@ -264,6 +264,7 @@ export PASSWORD_SAFE_VAULT=/secure/path/vault.dat
 ```bash
 password-safe serve
 # password-safe serve --unlock
+# password-safe serve --ttl 6h   # or PASSWORD_SAFE_SESSION_TTL=6h
 ```
 
 | Method | Path | Description |
@@ -279,7 +280,7 @@ password-safe serve
 | GET | `/api/v1/totp/{id}` | Current TOTP |
 | POST | `/api/v1/verify` | In-session integrity check |
 | POST | `/api/v1/generate` | Generate password / passphrase |
-| POST | `/api/v1/export` | Encrypted JSON bundle (body `{"passphrase":"…"}`, never plaintext) |
+| POST | `/api/v1/export` | Default: encrypted JSON (`{"passphrase":"…"}`). Plaintext CSV: `{"format":"csv","confirm":"EXPORT"}` (session required) |
 | POST | `/api/v1/backup` | Create an encrypted backup on the server now |
 
 ## systemd

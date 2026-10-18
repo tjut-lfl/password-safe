@@ -3,7 +3,7 @@ if (typeof globalThis.chrome === 'undefined' && typeof globalThis.browser !== 'u
 // 后台 Service Worker：唯一与保险箱服务通信的地方。令牌只存 chrome.storage.session（内存，不落盘）。
 'use strict';
 const DEFAULT_BASE = 'http://127.0.0.1:8787';
-const TTL_MS = 30 * 60 * 1000; // 与服务端 token TTL 一致
+const TTL_MS = 6 * 60 * 60 * 1000; // 默认与服务端一致；优先用 unlock 返回的 expires_in
 
 chrome.storage.session.setAccessLevel?.({ accessLevel: 'TRUSTED_CONTEXTS' });
 
@@ -11,13 +11,37 @@ async function baseURL() {
   const { serverUrl } = await chrome.storage.local.get('serverUrl');
   return (serverUrl || DEFAULT_BASE).replace(/\/+$/, '');
 }
+/** 解析 unlock 的 expires_in（Go duration 如 6h / 30m0s，或纯秒数字）。失败返回 null。 */
+function parseExpiresInMs(v) {
+  if (v == null) return null;
+  if (typeof v === 'number' && Number.isFinite(v) && v > 0) return Math.round(v * 1000);
+  const s = String(v).trim();
+  if (!s) return null;
+  if (/^\d+(\.\d+)?$/.test(s)) return Math.round(parseFloat(s) * 1000);
+  let ms = 0, matched = false;
+  const re = /(\d+(?:\.\d+)?)(ns|us|µs|ms|s|m|h)/gi;
+  let m;
+  while ((m = re.exec(s))) {
+    matched = true;
+    const n = parseFloat(m[1]);
+    switch (m[2].toLowerCase()) {
+      case 'h': ms += n * 3600000; break;
+      case 'm': ms += n * 60000; break;
+      case 's': ms += n * 1000; break;
+      case 'ms': ms += n; break;
+      default: break; // ns/us 忽略
+    }
+  }
+  return matched && ms > 0 ? Math.round(ms) : null;
+}
 async function getSession() {
-  const s = await chrome.storage.session.get(['token', 'tokenAt']);
+  const s = await chrome.storage.session.get(['token', 'tokenAt', 'ttlMs']);
   if (!s.token) return null;
-  if (Date.now() - s.tokenAt > TTL_MS) { await clearSession(); return null; }
+  const ttl = (typeof s.ttlMs === 'number' && s.ttlMs > 0) ? s.ttlMs : TTL_MS;
+  if (Date.now() - s.tokenAt > ttl) { await clearSession(); return null; }
   return s.token;
 }
-async function clearSession() { await chrome.storage.session.remove(['token', 'tokenAt']); }
+async function clearSession() { await chrome.storage.session.remove(['token', 'tokenAt', 'ttlMs']); }
 
 async function api(path, { method = 'GET', body, auth = true } = {}) {
   const headers = {};
@@ -150,8 +174,9 @@ const handlers = {
   },
   async unlock({ password }) {
     const d = await api('/api/v1/unlock', { method: 'POST', body: { password }, auth: false });
-    await chrome.storage.session.set({ token: d.token, tokenAt: Date.now() });
-    return { ok: true };
+    const ttlMs = parseExpiresInMs(d.expires_in_sec) || parseExpiresInMs(d.expires_in) || TTL_MS;
+    await chrome.storage.session.set({ token: d.token, tokenAt: Date.now(), ttlMs });
+    return { ok: true, expires_in: d.expires_in, ttlMs };
   },
   async lock() {
     try { await api('/api/v1/lock', { method: 'POST' }); } catch (_) {}
@@ -219,9 +244,35 @@ const handlers = {
   },
   async exportBundle({ passphrase }) {
     if (!passphrase || passphrase.length < 8) throw new Error('导出口令至少 8 位');
-    const d = await api('/api/v1/export', { method: 'POST', body: { passphrase } });
+    const d = await api('/api/v1/export', { method: 'POST', body: { format: 'json-encrypted', passphrase } });
     if (d.format !== 'password-safe-export') throw new Error('服务端返回的不是加密导出包');
     return { json: JSON.stringify(d, null, 2), entries: d.entries || 0 };
+  },
+  async exportCSV() {
+    const t = await getSession();
+    if (!t) throw new Error('LOCKED');
+    const base = await baseURL();
+    let res;
+    try {
+      res = await fetch(base + '/api/v1/export', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + t },
+        body: JSON.stringify({ format: 'csv', confirm: 'EXPORT' }),
+        credentials: 'omit',
+        cache: 'no-store',
+      });
+    } catch (_) {
+      throw new Error('无法连接服务：请启动 Password Safe 客户端（或确认 SSH 隧道已建立）');
+    }
+    if (res.status === 401) { await clearSession(); throw new Error('LOCKED'); }
+    const textBody = await res.text();
+    if (!res.ok) {
+      let msg = 'HTTP ' + res.status;
+      try { msg = JSON.parse(textBody).error || msg; } catch (_) {}
+      throw new Error(msg);
+    }
+    const lines = textBody.split(/\r?\n/).filter(l => l.length);
+    return { csv: textBody, entries: Math.max(0, lines.length - 1) };
   },
   // 桌面客户端（原生消息）：隧道状态 / 一键重连。Firefox 版无此权限时返回 available:false
   async clientStatus() { return await nativeCall('status'); },

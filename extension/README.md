@@ -7,7 +7,7 @@ This extension is the browser client of the `password-safe` service:
 - One-click strong password on sign-up / change-password pages, filling both "password" and "confirm password"
 - **Multi-step login** (username page first, password page next — Google, Microsoft, AWS, Apple…): pick an entry on the username page to fill only the username; the extension remembers the choice for that tab (memory only, expires after 5 minutes, no password stored). When the password field appears (same page, or after navigating to another subdomain of the same site) the entry's password is filled automatically, or pick it from 🔒
 - After a form is submitted it asks "Save to Password Safe?" and only creates/updates the entry **after you confirm**
-- The master password is only used to unlock; the session token lives in browser memory (`chrome.storage.session`), is gone when the browser closes, and auto-locks after 30 minutes
+- The master password is only used to unlock; the session token lives in browser memory (`chrome.storage.session`), is gone when the browser closes, and auto-locks after 6 hours
 
 ```
 Extension ──http──▶ 127.0.0.1:8787 (local) ══SSH tunnel══▶ 127.0.0.1:8787 on the server (password-safe serve)
@@ -117,7 +117,7 @@ If local port 8787 is taken, use `-L 18787:127.0.0.1:8787` and set `http://127.0
 - **Search**: type in the popup search box; click a result to fill the current page
 - **Sign up**: on a sign-up page click 🔒 → "Generate strong password" (server-generated, or local secure random if the server is unreachable); both password fields are filled
 - **Save**: after submitting a login/sign-up form, "Save to Password Safe?" appears at the top right; click "Save" to write it. The entry is named after the domain (`domain/username` when a site has several accounts); an existing same-site same-username entry is "Updated". For multi-step logins the username typed on step 1 is combined with the step-2 password
-- **Lock**: click "Lock" in the popup; auto-locks after 30 minutes
+- **Lock**: click "Lock" in the popup; auto-locks after 6 hours
 
 ## 5. Security notes & limits
 - No remote code, passwords are never logged; only the background script talks to the server, pages never see the token
@@ -150,3 +150,10 @@ Manual multi-step login test: see [test/README.md](test/README.md).
 
 ## Desktop client (v0.3.0-beta)
 Instead of a manual SSH tunnel you can run the Windows tray client (`password-safe-client.exe`), which keeps the tunnel up and lets the popup show tunnel status / one-click reconnect via native messaging. The extension ID is now fixed (`eaclmdmcljfnhljgbdlcejepnpnfahie`). See [../cmd/password-safe-client/README.md](../cmd/password-safe-client/README.md).
+
+## Export / change device
+
+When unlocked, the popup **Export / change device** section offers:
+- **Encrypted bundle**: JSON with your passphrase; on the new device run `password-safe import -f`
+- **CSV (Google format)**: plaintext — delete the file right after import
+- **Server backup**: create a backup under `~/.password-safe/backups/` on the server now

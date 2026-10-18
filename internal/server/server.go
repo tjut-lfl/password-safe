@@ -6,9 +6,11 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -30,12 +32,51 @@ type Server struct {
 	ttl     time.Duration
 }
 
+// DefaultSessionTTL 默认会话有效期（6 小时），可用环境变量 PASSWORD_SAFE_SESSION_TTL
+// （Go duration，如 6h、30m）覆盖。无效值回退到默认。
+func DefaultSessionTTL() time.Duration {
+	const def = 6 * time.Hour
+	if env := strings.TrimSpace(os.Getenv("PASSWORD_SAFE_SESSION_TTL")); env != "" {
+		if d, err := time.ParseDuration(env); err == nil && d > 0 {
+			return d
+		}
+	}
+	return def
+}
+
+// FormatTTL 把 duration 格式化为简短 Go duration 字符串（如 6h、30m）。
+func FormatTTL(d time.Duration) string {
+	if d <= 0 {
+		return "0s"
+	}
+	if d%time.Hour == 0 {
+		return fmt.Sprintf("%dh", int(d/time.Hour))
+	}
+	if d%time.Minute == 0 {
+		return fmt.Sprintf("%dm", int(d/time.Minute))
+	}
+	if d%time.Second == 0 {
+		return fmt.Sprintf("%ds", int(d/time.Second))
+	}
+	return d.String()
+}
+
 func New(v *vault.Vault, addr string) *Server {
 	if addr == "" {
 		addr = "127.0.0.1:8787"
 	}
-	return &Server{vault: v, addr: addr, ttl: 30 * time.Minute}
+	return &Server{vault: v, addr: addr, ttl: DefaultSessionTTL()}
 }
+
+// SetTTL 设置会话有效期；非正数时忽略。
+func (s *Server) SetTTL(d time.Duration) {
+	if d > 0 {
+		s.ttl = d
+	}
+}
+
+// TTL 返回当前会话有效期。
+func (s *Server) TTL() time.Duration { return s.ttl }
 
 func (s *Server) Addr() string { return s.addr }
 
@@ -175,7 +216,8 @@ func (s *Server) handleUnlock(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, 200, map[string]any{
 		"token":          tok,
-		"expires_in":     "30m",
+		"expires_in":     FormatTTL(s.ttl),
+		"expires_in_sec": int(s.ttl.Seconds()),
 		"format_version": s.vault.FormatVersion(),
 	})
 }
@@ -428,8 +470,12 @@ func (s *Server) handleGenerate(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]string{"password": pw, "type": "random"})
 }
 
-// handleExport 只返回加密 JSON 包（json-encrypted），从不返回明文。
-// 请求体：{"passphrase":"..."}（至少 8 位；可以填主密码）。
+// handleExport 导出条目。默认返回加密 JSON 包（json-encrypted）。
+// 请求体示例：
+//
+//	{"passphrase":"..."}                        → 加密 JSON（默认）
+//	{"format":"json-encrypted","passphrase":"..."}
+//	{"format":"csv","confirm":"EXPORT"}         → 明文 CSV（需显式确认，勿在日志中打印）
 func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeErr(w, 405, "方法不允许")
@@ -437,29 +483,60 @@ func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
 	}
 	var body struct {
 		Passphrase string `json:"passphrase"`
+		Format     string `json:"format"`
+		Confirm    string `json:"confirm"`
 	}
-	if err := json.NewDecoder(io.LimitReader(r.Body, 4096)).Decode(&body); err != nil || len(body.Passphrase) < 8 {
-		writeErr(w, 400, "需要 passphrase 字段（至少 8 个字符）")
+	if err := json.NewDecoder(io.LimitReader(r.Body, 8192)).Decode(&body); err != nil && !errors.Is(err, io.EOF) {
+		writeErr(w, 400, "无效 JSON")
 		return
+	}
+	format := strings.ToLower(strings.TrimSpace(body.Format))
+	if format == "" {
+		format = vault.FormatJSONEncrypted
 	}
 	entries, err := s.vault.Entries()
 	if err != nil {
 		writeErr(w, 401, err.Error())
 		return
 	}
-	pass := []byte(body.Passphrase)
-	data, err := vault.ExportBundle(entries, pass, s.vault.AppVersion, "passphrase")
-	crypto.Zero(pass)
-	if err != nil {
-		writeErr(w, 500, err.Error())
-		return
+	switch format {
+	case vault.FormatJSONEncrypted, "encrypted-json":
+		if len(body.Passphrase) < 8 {
+			writeErr(w, 400, "需要 passphrase 字段（至少 8 个字符）")
+			return
+		}
+		pass := []byte(body.Passphrase)
+		data, err := vault.ExportBundle(entries, pass, s.vault.AppVersion, "passphrase")
+		crypto.Zero(pass)
+		if err != nil {
+			writeErr(w, 500, err.Error())
+			return
+		}
+		name := "password-safe-export-" + time.Now().Format("20060102-150405") + ".json"
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.Header().Set("Content-Disposition", "attachment; filename="+name)
+		w.Header().Set("Cache-Control", "no-store")
+		w.WriteHeader(200)
+		_, _ = w.Write(data)
+	case vault.FormatCSV:
+		if body.Confirm != "EXPORT" {
+			writeErr(w, 400, `明文 CSV 导出需要 confirm 字段为 "EXPORT"`)
+			return
+		}
+		data, err := vault.ExportCSV(entries, false)
+		if err != nil {
+			writeErr(w, 500, err.Error())
+			return
+		}
+		name := "password-safe-export-" + time.Now().Format("20060102") + ".csv"
+		w.Header().Set("Content-Type", "text/csv; charset=utf-8")
+		w.Header().Set("Content-Disposition", "attachment; filename="+name)
+		w.Header().Set("Cache-Control", "no-store")
+		w.WriteHeader(200)
+		_, _ = w.Write(data)
+	default:
+		writeErr(w, 400, "不支持的 format（支持 json-encrypted 或 csv）")
 	}
-	name := "password-safe-export-" + time.Now().Format("20060102-150405") + ".json"
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	w.Header().Set("Content-Disposition", "attachment; filename="+name)
-	w.Header().Set("Cache-Control", "no-store")
-	w.WriteHeader(200)
-	_, _ = w.Write(data)
 }
 
 // handleBackup 在服务端备份目录立即创建一份加密备份。
