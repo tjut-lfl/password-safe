@@ -133,18 +133,32 @@ async function setPending(tabId, cred) { await chrome.storage.session.set({ ['pe
 async function popPending(tabId) { const k = 'pending_' + tabId; const r = await chrome.storage.session.get(k); await chrome.storage.session.remove(k); return r[k]; }
 
 async function saveCredential({ host, username, password, url }) {
+  if (!host) throw new Error('缺少网站主机名');
+  if (!password) throw new Error('密码为空，未保存');
+  // 统一存可解析 URL，匹配时 hostOf 会去掉 www
+  const saveUrl = url || ('https://' + host);
   const { entries = [] } = await api('/api/v1/entries');
   const same = entries.find(e => matchesSite(e, host) && (e.username || '') === (username || ''));
   if (same) {
-    await api('/api/v1/entries/' + encodeURIComponent(same.id), { method: 'PUT', body: { password, url: same.url || url } });
-    return { updated: true, name: same.name };
+    const updated = await api('/api/v1/entries/' + encodeURIComponent(same.id), {
+      method: 'PUT', body: { password, url: same.url || saveUrl }
+    });
+    if (!updated || !updated.id) throw new Error('服务端未确认更新');
+    const found = await entriesForHost(host);
+    if (!found.some(e => e.id === updated.id)) throw new Error('更新后无法读回该条目（隧道可能不稳定，请重连后再试）');
+    return { updated: true, name: updated.name || same.name, id: updated.id };
   }
   let name = host;
   if (entries.some(e => e.name === name)) name = host + '/' + (username || 'account');
   let i = 2; const baseName = name;
   while (entries.some(e => e.name === name)) name = baseName + '-' + (i++);
-  await api('/api/v1/entries', { method: 'POST', body: { name, username, password, url, tags: ['browser'] } });
-  return { updated: false, name };
+  const created = await api('/api/v1/entries', {
+    method: 'POST', body: { name, username, password, url: saveUrl, tags: ['browser'] }
+  });
+  if (!created || !created.id) throw new Error('服务端未确认写入（未返回条目 id）');
+  const found = await entriesForHost(host);
+  if (!found.some(e => e.id === created.id)) throw new Error('写入后无法读回该条目（隧道可能不稳定，请重连后再试）');
+  return { updated: false, name: created.name || name, id: created.id };
 }
 
 const NATIVE_HOST = 'com.tjut_lfl.password_safe';

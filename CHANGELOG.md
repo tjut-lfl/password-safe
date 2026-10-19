@@ -1,5 +1,17 @@
 # 更新日志 / Changelog
 
+## v0.3.5-beta（2026-10-19）
+**中文**
+- 扩展：保存/更新后必须读回条目才提示「已保存」，避免隧道异常时假成功；要求服务端返回条目 id
+- 扩展：空密码拒绝保存；统一写入带 scheme 的 URL
+- 客户端：SSH 隧道双向转发改为等两侧结束并半关闭，减少 CLOSE-WAIT 与半截响应
+- 服务端：访问日志（method/path/status/耗时）；status 在已解锁时返回 entry_count
+
+**English**
+- Extension: only toast "saved" after the entry can be read back; require server id
+- Client: tunnel forward waits for both directions + half-close (fewer CLOSE-WAIT / truncated responses)
+- Server: access log; status includes entry_count when unlocked
+
 ## v0.3.4-beta（2026-10-19）
 **中文**
 - 托盘客户端：支持 **备用主机**（`fallback_host` / `fallback_port`）。每次重连先试主主机，超时/拒绝后再自动试备用；日志与托盘会标明当前经哪条路径（「经 10.x…」或「经备用主机 …」）

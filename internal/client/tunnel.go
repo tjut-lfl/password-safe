@@ -393,8 +393,23 @@ func (t *Tunnel) forward(lc net.Conn) {
 		return
 	}
 	defer rc.Close()
+	// 等双向都结束；一侧 EOF 后半关闭写端，避免过早掐断对端仍在发送的响应（否则会出现
+	// CLOSE-WAIT 堆积，偶发「已保存」提示但服务端未真正写入）。
 	done := make(chan struct{}, 2)
-	go func() { io.Copy(rc, lc); done <- struct{}{} }()
-	go func() { io.Copy(lc, rc); done <- struct{}{} }()
+	go func() {
+		io.Copy(rc, lc)
+		if cw, ok := rc.(interface{ CloseWrite() error }); ok {
+			_ = cw.CloseWrite()
+		}
+		done <- struct{}{}
+	}()
+	go func() {
+		io.Copy(lc, rc)
+		if cw, ok := lc.(interface{ CloseWrite() error }); ok {
+			_ = cw.CloseWrite()
+		}
+		done <- struct{}{}
+	}()
+	<-done
 	<-done
 }

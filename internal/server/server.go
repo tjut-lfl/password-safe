@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"net/http"
 	"os"
@@ -109,7 +110,7 @@ func (s *Server) ListenAndServe() error {
 		return errors.New("安全限制：仅允许绑定到 localhost (127.0.0.1 / ::1)")
 	}
 	srv := &http.Server{
-		Handler:           s.Handler(),
+		Handler:           s.accessLog(s.Handler()),
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       30 * time.Second,
 		WriteTimeout:      30 * time.Second,
@@ -174,6 +175,27 @@ func writeErr(w http.ResponseWriter, code int, msg string) {
 	writeJSON(w, code, map[string]string{"error": msg})
 }
 
+
+// accessLog 记录 method/path/status/耗时（不含请求体与令牌）。
+func (s *Server) accessLog(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		lw := &statusWriter{ResponseWriter: w, code: 200}
+		next.ServeHTTP(lw, r)
+		log.Printf("%s %s %d %s", r.Method, r.URL.Path, lw.code, time.Since(start).Round(time.Millisecond))
+	})
+}
+
+type statusWriter struct {
+	http.ResponseWriter
+	code int
+}
+
+func (w *statusWriter) WriteHeader(code int) {
+	w.code = code
+	w.ResponseWriter.WriteHeader(code)
+}
+
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]any{
 		"status":    "ok",
@@ -183,11 +205,15 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, 200, map[string]any{
+	out := map[string]any{
 		"initialized":    s.vault.Exists(),
 		"unlocked":       s.vault.IsUnlocked(),
 		"format_version": s.vault.FormatVersion(),
-	})
+	}
+	if s.vault.IsUnlocked() {
+		out["entry_count"] = s.vault.EntryCount()
+	}
+	writeJSON(w, 200, out)
 }
 
 func (s *Server) handleUnlock(w http.ResponseWriter, r *http.Request) {
