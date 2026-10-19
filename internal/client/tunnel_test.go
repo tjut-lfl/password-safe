@@ -181,3 +181,43 @@ func waitFor(t *testing.T, f func() bool) {
 	}
 	t.Fatal("timeout waiting for condition")
 }
+
+func TestTunnelFallbackHost(t *testing.T) {
+	api := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"initialized":true,"unlocked":false}`))
+	})}
+	al, _ := net.Listen("tcp", "127.0.0.1:0")
+	go api.Serve(al)
+	defer api.Close()
+	remotePort := al.Addr().(*net.TCPAddr).Port
+
+	_, hpriv, _ := ed25519.GenerateKey(rand.Reader)
+	hs, _ := ssh.NewSignerFromKey(hpriv)
+	cpub, cpriv, _ := ed25519.GenerateKey(rand.Reader)
+	cp, _ := ssh.NewPublicKey(cpub)
+	dir := t.TempDir()
+	blk, _ := ssh.MarshalPrivateKey(cpriv, "")
+	keyPath := filepath.Join(dir, "id.pem")
+	os.WriteFile(keyPath, pem.EncodeToMemory(blk), 0o600)
+
+	goodPort := freePort(t)
+	startSSHD(t, hs, cp, "127.0.0.1:"+strconv.Itoa(goodPort))
+	badPort := freePort(t) // nothing listening
+
+	cfg := Config{
+		Host: "127.0.0.1", Port: badPort,
+		FallbackHost: "127.0.0.1", FallbackPort: goodPort,
+		User: "u", KeyPath: keyPath, LocalPort: freePort(t), RemotePort: remotePort,
+	}
+	tun := NewTunnel(cfg, &KnownHosts{Path: filepath.Join(dir, "kh")}, log.New(io.Discard, "", 0))
+	tun.Backoff = Backoff{Min: 50 * time.Millisecond, Max: 200 * time.Millisecond}
+	tun.HealthInterval, tun.KeepAlive = time.Hour, time.Hour
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go tun.Run(ctx)
+
+	waitFor(t, func() bool {
+		s := tun.Status()
+		return s.State == StateConnected && s.APIOK && s.ViaFallback && s.ActiveHost == "127.0.0.1"
+	})
+}

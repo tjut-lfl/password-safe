@@ -1,4 +1,4 @@
-# Password Safe 桌面客户端（测试版 v0.3.0-beta）
+# Password Safe 桌面客户端（测试版 v0.3.4-beta）
 
 [English](README.md) | 中文
 
@@ -13,9 +13,9 @@
 
 ## 首次运行
 
-1. 解压 `password-safe-client-v0.3.0-beta-windows-amd64.zip`，把 `password-safe-client.exe` 放到一个固定位置（例如 `%LOCALAPPDATA%\Programs\password-safe-client\`），之后不要再移动。
+1. 解压 `password-safe-client-v0.3.4-beta-windows-amd64.zip`，把 `password-safe-client.exe` 放到一个固定位置（例如 `%LOCALAPPDATA%\Programs\password-safe-client\`），之后不要再移动。
 2. 双击运行。浏览器会打开两个本地页面：
-   - **连接设置**：填服务器地址、SSH 端口（22）、用户名（如 `ubuntu`）、私钥路径（如 `C:\Users\<你的用户名>\.ssh\<your-key>.pem`）。点「保存并连接」。
+   - **连接设置**：填服务器地址（主主机）、SSH 端口（22）、可选的**备用主机**（主主机连不上时自动改连，例如把 WireGuard 内网当地址、服务器公网 IP 当备用）、用户名（如 `ubuntu`）、私钥路径。点「保存并连接」。
    - **插件安装引导**：点「打开 Chrome/Edge 扩展页」→ 打开「开发者模式」→「加载已解压的扩展程序」→ 选页面上显示的文件夹（可一键复制路径）。
 3. 托盘图标变绿即连上。点插件图标，输入主密码解锁。
 
@@ -49,7 +49,7 @@ password-safe-client.exe --version
 
 | 路径 | 内容 |
 |---|---|
-| `%APPDATA%\password-safe-client\config.json` | 连接配置（不含任何密码） |
+| `%APPDATA%\password-safe-client\config.json` | 连接配置（不含任何密码；可含 `fallback_host` / `fallback_port`） |
 | `%APPDATA%\password-safe-client\known_hosts` | 服务器主机密钥指纹（首次连接记录） |
 | `%APPDATA%\password-safe-client\client.log` | 日志（1 MB 滚动，保留 3 份；不记录秘密） |
 | `%APPDATA%\password-safe-client\control.json` | 本地控制端口与随机令牌（供原生消息使用） |

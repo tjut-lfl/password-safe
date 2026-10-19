@@ -14,13 +14,15 @@ import (
 
 // Config 保存在 %APPDATA%\password-safe-client\config.json。不包含任何密码/口令。
 type Config struct {
-	Host       string `json:"server_host"`
-	Port       int    `json:"server_port"`
-	User       string `json:"user"`
-	KeyPath    string `json:"key_path"`
-	LocalPort  int    `json:"local_port"`
-	RemotePort int    `json:"remote_port"`
-	Autostart  bool   `json:"autostart"`
+	Host         string `json:"server_host"`
+	Port         int    `json:"server_port"`
+	FallbackHost string `json:"fallback_host,omitempty"`
+	FallbackPort int    `json:"fallback_port,omitempty"` // 0 = 与 server_port 相同
+	User         string `json:"user"`
+	KeyPath      string `json:"key_path"`
+	LocalPort    int    `json:"local_port"`
+	RemotePort   int    `json:"remote_port"`
+	Autostart    bool   `json:"autostart"`
 }
 
 func DefaultConfig() Config {
@@ -43,10 +45,23 @@ func (c Config) Validate() error {
 			errs = append(errs, fmt.Sprintf("%s 端口无效 / invalid port: %d", name, p))
 		}
 	}
+	if fh := strings.TrimSpace(c.FallbackHost); fh != "" && c.FallbackPort != 0 {
+		if c.FallbackPort < 1 || c.FallbackPort > 65535 {
+			errs = append(errs, fmt.Sprintf("fallback_port 端口无效 / invalid port: %d", c.FallbackPort))
+		}
+	}
 	if len(errs) > 0 {
 		return errors.New(strings.Join(errs, "; "))
 	}
 	return nil
+}
+
+// FallbackPortOrDefault 返回备用端口；未填时与主端口相同。
+func (c Config) FallbackPortOrDefault() int {
+	if c.FallbackPort > 0 {
+		return c.FallbackPort
+	}
+	return c.Port
 }
 
 // ConfigDir: Windows %APPDATA%\password-safe-client；其它系统 ~/.config/password-safe-client。

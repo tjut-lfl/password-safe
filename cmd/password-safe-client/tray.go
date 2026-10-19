@@ -52,6 +52,13 @@ func onReady(app *client.App) {
 		case s.Error != "":
 			icon = iconRed
 		}
+		if s.ActiveHost != "" && (s.State == client.StateConnected || s.State == client.StateConnecting) {
+			if s.ViaFallback {
+				label += " · " + T("via_fallback") + " " + s.ActiveHost
+			} else {
+				label += " · " + T("via_host") + " " + s.ActiveHost
+			}
+		}
 		systray.SetIcon(icon)
 		mStatus.SetTitle(T("status") + ": " + label)
 		tip := "Password Safe — " + label

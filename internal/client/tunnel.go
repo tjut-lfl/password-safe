@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -30,6 +31,8 @@ type Status struct {
 	State       State     `json:"state"`
 	Error       string    `json:"error,omitempty"`
 	Server      string    `json:"server,omitempty"`
+	ActiveHost  string    `json:"active_host,omitempty"`
+	ViaFallback bool      `json:"via_fallback,omitempty"`
 	LocalAddr   string    `json:"local_addr,omitempty"`
 	APIOK       bool      `json:"api_ok"`
 	Unlocked    bool      `json:"vault_unlocked"`
@@ -59,7 +62,7 @@ type Tunnel struct {
 }
 
 func NewTunnel(cfg Config, kh *KnownHosts, lg *log.Logger) *Tunnel {
-	return &Tunnel{Cfg: cfg, KnownHosts: kh, Logger: lg, HealthInterval: 20 * time.Second, KeepAlive: 30 * time.Second,
+	return &Tunnel{Cfg: cfg, KnownHosts: kh, Logger: lg, HealthInterval: 20 * time.Second, KeepAlive: 15 * time.Second,
 		Backoff: Backoff{Min: time.Second, Max: time.Minute}, kick: make(chan struct{}, 1),
 		st: Status{State: StateDisconnected, Since: time.Now()}}
 }
@@ -68,7 +71,11 @@ func (t *Tunnel) Status() Status {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	s := t.st
-	s.Server = t.Cfg.Host
+	if s.ActiveHost != "" {
+		s.Server = s.ActiveHost
+	} else {
+		s.Server = t.Cfg.Host
+	}
 	s.LocalAddr = net.JoinHostPort("127.0.0.1", strconv.Itoa(t.Cfg.LocalPort))
 	s.Configured = t.Cfg.Validate() == nil
 	return s
@@ -135,14 +142,67 @@ func (t *Tunnel) signer() (ssh.Signer, error) {
 	return s, nil
 }
 
-func (t *Tunnel) dial() (*ssh.Client, error) {
-	s, err := t.signer()
-	if err != nil {
-		return nil, err
+// dialEndpoint 描述一次 SSH 拨号目标。
+type dialEndpoint struct {
+	Host        string
+	Port        int
+	ViaFallback bool
+	Label       string // "primary" | "fallback"
+}
+
+// endpoints 返回拨号顺序：先主主机，再备用（若已配置且与主不同）。
+func (c Config) endpoints() []dialEndpoint {
+	out := []dialEndpoint{{Host: strings.TrimSpace(c.Host), Port: c.Port, ViaFallback: false, Label: "primary"}}
+	fh := strings.TrimSpace(c.FallbackHost)
+	if fh == "" {
+		return out
 	}
+	fp := c.FallbackPortOrDefault()
+	if fh == out[0].Host && fp == out[0].Port {
+		return out
+	}
+	return append(out, dialEndpoint{Host: fh, Port: fp, ViaFallback: true, Label: "fallback"})
+}
+
+func (t *Tunnel) dialOne(ep dialEndpoint, s ssh.Signer) (*ssh.Client, error) {
 	cc := &ssh.ClientConfig{User: t.Cfg.User, Auth: []ssh.AuthMethod{ssh.PublicKeys(s)},
 		HostKeyCallback: t.KnownHosts.Callback(), Timeout: 15 * time.Second}
-	return ssh.Dial("tcp", net.JoinHostPort(t.Cfg.Host, strconv.Itoa(t.Cfg.Port)), cc)
+	addr := net.JoinHostPort(ep.Host, strconv.Itoa(ep.Port))
+	t.Logger.Printf("ssh dialing %s (%s)", addr, ep.Label)
+	return ssh.Dial("tcp", addr, cc)
+}
+
+// dial 先试主主机，失败且可重试时再试备用主机。返回 client、实际主机、是否经备用。
+func (t *Tunnel) dial() (*ssh.Client, string, bool, error) {
+	s, err := t.signer()
+	if err != nil {
+		return nil, "", false, err
+	}
+	eps := t.Cfg.endpoints()
+	var last error
+	for i, ep := range eps {
+		c, err := t.dialOne(ep, s)
+		if err == nil {
+			return c, ep.Host, ep.ViaFallback, nil
+		}
+		last = err
+		t.Logger.Printf("ssh dial %s (%s) failed: %v", net.JoinHostPort(ep.Host, strconv.Itoa(ep.Port)), ep.Label, err)
+		if errors.Is(err, ErrNeedPassphrase) {
+			return nil, "", false, err
+		}
+		var mm *HostKeyMismatchError
+		if errors.As(err, &mm) {
+			// 主机密钥不匹配需要用户处理；若还有备用主机可继续试另一端点
+			if i+1 < len(eps) {
+				continue
+			}
+			return nil, "", false, err
+		}
+	}
+	if last == nil {
+		last = errors.New("no endpoints")
+	}
+	return nil, "", false, last
 }
 
 func (t *Tunnel) remoteAddr() string { return net.JoinHostPort("127.0.0.1", strconv.Itoa(t.Cfg.RemotePort)) }
@@ -170,7 +230,7 @@ func (t *Tunnel) Run(ctx context.Context) {
 	var ln net.Listener
 	for ctx.Err() == nil {
 		if err := t.Cfg.Validate(); err != nil {
-			t.set(func(s *Status) { s.State, s.Error = StateDisconnected, "未配置 / not configured: "+err.Error() })
+			t.set(func(s *Status) { s.State, s.Error, s.ActiveHost, s.ViaFallback = StateDisconnected, "未配置 / not configured: "+err.Error(), "", false })
 			t.wait(ctx, 30*time.Second)
 			continue
 		}
@@ -182,7 +242,7 @@ func (t *Tunnel) Run(ctx context.Context) {
 				msg = fmt.Sprintf("本地端口 %d 已被占用（是否还开着手动的 ssh -L 隧道？）/ local port %d is in use", t.Cfg.LocalPort, t.Cfg.LocalPort)
 			}
 			t.Logger.Printf("listen: %s", msg)
-			t.set(func(s *Status) { s.State, s.Error = StateDisconnected, msg })
+			t.set(func(s *Status) { s.State, s.Error, s.ActiveHost, s.ViaFallback = StateDisconnected, msg, "", false })
 			t.wait(ctx, t.Backoff.Next())
 			continue
 		}
@@ -195,12 +255,12 @@ func (t *Tunnel) Run(ctx context.Context) {
 	go t.acceptLoop(ln)
 	t.Backoff.Reset()
 	for ctx.Err() == nil {
-		t.set(func(s *Status) { s.State, s.APIOK = StateConnecting, false })
-		c, err := t.dial()
+		t.set(func(s *Status) { s.State, s.APIOK, s.ActiveHost, s.ViaFallback = StateConnecting, false, "", false })
+		c, host, viaFB, err := t.dial()
 		if err != nil {
 			t.Logger.Printf("ssh connect: %v", err)
 			needs := errors.Is(err, ErrNeedPassphrase)
-			t.set(func(s *Status) { s.State, s.Error, s.NeedsPass = StateDisconnected, err.Error(), needs })
+			t.set(func(s *Status) { s.State, s.Error, s.NeedsPass, s.ActiveHost, s.ViaFallback = StateDisconnected, err.Error(), needs, "", false })
 			d := t.Backoff.Next()
 			var mm *HostKeyMismatchError
 			if errors.As(err, &mm) || needs {
@@ -212,8 +272,15 @@ func (t *Tunnel) Run(ctx context.Context) {
 		t.mu.Lock()
 		t.client = c
 		t.mu.Unlock()
-		t.Logger.Printf("ssh connected to %s", t.Cfg.Host)
-		t.set(func(s *Status) { s.State, s.Error, s.NeedsPass = StateConnected, "", false })
+		via := "primary"
+		if viaFB {
+			via = "fallback"
+		}
+		t.Logger.Printf("ssh connected to %s (%s)", host, via)
+		t.set(func(s *Status) {
+			s.State, s.Error, s.NeedsPass = StateConnected, "", false
+			s.ActiveHost, s.ViaFallback = host, viaFB
+		})
 		t.Backoff.Reset()
 		t.supervise(ctx, c)
 		c.Close()
@@ -222,11 +289,11 @@ func (t *Tunnel) Run(ctx context.Context) {
 		t.mu.Unlock()
 		if ctx.Err() == nil {
 			t.Logger.Printf("ssh disconnected; reconnecting")
-			t.set(func(s *Status) { s.State, s.APIOK = StateDisconnected, false })
+			t.set(func(s *Status) { s.State, s.APIOK, s.ActiveHost, s.ViaFallback = StateDisconnected, false, "", false })
 			t.wait(ctx, t.Backoff.Next())
 		}
 	}
-	t.set(func(s *Status) { s.State = StateDisconnected })
+	t.set(func(s *Status) { s.State, s.ActiveHost, s.ViaFallback = StateDisconnected, "", false })
 }
 
 // supervise：保活 + 健康检查，连接失效时返回。
@@ -253,7 +320,7 @@ func (t *Tunnel) supervise(ctx context.Context, c *ssh.Client) {
 					t.Logger.Printf("keepalive failed: %v", err)
 					return
 				}
-			case <-time.After(15 * time.Second):
+			case <-time.After(10 * time.Second):
 				t.Logger.Printf("keepalive timeout")
 				return
 			}

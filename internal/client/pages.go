@@ -13,8 +13,11 @@ var setupTpl = template.Must(template.New("s").Parse(`<!doctype html><html lang=
 <div class="card">状态 / Status: <b id="st">{{.S.State}}</b> <span class="err" id="se">{{.S.Error}}</span></div>
 {{if .Msg}}<p class="ok">{{.Msg}}</p>{{end}}{{if .Err}}<p class="err">{{.Err}}</p>{{end}}
 <form method="post" action="{{.Pre}}setup">
-<label>服务器地址 / Server host</label><input name="host" value="{{.C.Host}}" placeholder="例如 203.0.113.10 或 vault.example.com" required>
+<label>服务器地址 / Server host</label><input name="host" value="{{.C.Host}}" placeholder="例如 10.77.0.1 或 vault.example.com" required>
 <label>SSH 端口 / SSH port</label><input name="port" value="{{.C.Port}}" inputmode="numeric">
+<label>备用主机 / Fallback host（可选）</label><input name="fhost" value="{{.C.FallbackHost}}" placeholder="主主机连不上时自动改连；填服务器公网 IP">
+<label>备用端口 / Fallback port</label><input name="fport" value="{{if .C.FallbackPort}}{{.C.FallbackPort}}{{end}}" inputmode="numeric" placeholder="留空则与主 SSH 端口相同">
+<p class="muted">每次重连先试主主机，失败再试备用。托盘会显示当前经哪条路径。/ Tries primary first, then fallback. Tray shows which endpoint is active.</p>
 <label>SSH 用户名 / SSH user</label><input name="user" value="{{.C.User}}" required>
 <label>私钥文件路径 / Private key path</label><input name="key" value="{{.C.KeyPath}}" placeholder="C:\Users\你的用户名\.ssh\your-key.pem" required>
 <p class="muted">私钥只在本机读取，不会上传；客户端不保存私钥口令。/ The key never leaves this PC.</p>
@@ -24,7 +27,7 @@ var setupTpl = template.Must(template.New("s").Parse(`<!doctype html><html lang=
 {{if .S.NeedsPass}}<div class="card"><form method="post" action="{{.Pre}}passphrase"><label>私钥口令（仅保存在内存，退出后需重新输入）/ Key passphrase (memory only)</label>
 <input type="password" name="passphrase" autocomplete="off"><p><button>解锁私钥 / Unlock key</button></p></form></div>{{end}}
 <p class="muted">配置文件 / Config: <code>{{.Dir}}\config.json</code>。首次连接会记录服务器指纹（known_hosts），之后指纹变化会拒绝连接。</p>
-<script>setInterval(async()=>{try{const s=await (await fetch('{{.Pre}}status')).json();document.getElementById('st').textContent=s.state+(s.api_ok?' · API OK':'');document.getElementById('se').textContent=s.error||''}catch(e){}},2000)</script>
+<script>setInterval(async()=>{try{const s=await (await fetch('{{.Pre}}status')).json();let st=s.state+(s.api_ok?' · API OK':'');if(s.active_host){st+=' · '+(s.via_fallback?'备用/fallback ':'')+s.active_host}document.getElementById('st').textContent=st;document.getElementById('se').textContent=s.error||''}catch(e){}},2000)</script>
 </body></html>`))
 
 var guideTpl = template.Must(template.New("g").Parse(`<!doctype html><html lang="zh"><head><meta charset="utf-8"><title>安装浏览器插件</title>` + css + `</head><body>

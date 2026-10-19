@@ -1,4 +1,4 @@
-# Password Safe desktop client (beta v0.3.0-beta)
+# Password Safe desktop client (beta v0.3.4-beta)
 
 English | [中文](README.zh-CN.md)
 
@@ -13,9 +13,9 @@ A small Windows tray app (Linux has a tray too; macOS runs without a tray). Once
 
 ## First run
 
-1. Unzip `password-safe-client-v0.3.0-beta-windows-amd64.zip` and put `password-safe-client.exe` somewhere permanent (e.g. `%LOCALAPPDATA%\Programs\password-safe-client\`).
+1. Unzip `password-safe-client-v0.3.4-beta-windows-amd64.zip` and put `password-safe-client.exe` somewhere permanent (e.g. `%LOCALAPPDATA%\Programs\password-safe-client\`).
 2. Double-click it. Two local pages open in your browser:
-   - **Connection settings** — server host, SSH port (22), user (e.g. `ubuntu`), private key path (e.g. `C:\Users\<you>\.ssh\<your-key>.pem`). Click *Save & connect*.
+   - **Connection settings** — primary server host, SSH port (22), optional **fallback host** (tried automatically when primary fails — e.g. VPN/WireGuard address as primary, server public IP as fallback), user (e.g. `ubuntu`), private key path. Click *Save & connect*.
    - **Extension guide** — *Open Chrome/Edge extensions page* → enable *Developer mode* → *Load unpacked* → pick the folder shown (copy button provided).
 3. When the tray icon turns green you are connected. Open the extension and unlock with your master password.
 
@@ -38,7 +38,7 @@ No arguments = tray mode (the native host is re-registered on every start). Laun
 
 ## Files
 
-`%APPDATA%\password-safe-client\`: `config.json` (no secrets), `known_hosts` (TOFU fingerprints), `client.log` (1 MB rotation ×3, no secrets), `control.json` (local control port + random token), `com.tjut_lfl.password_safe.json` (native host manifest). `%LOCALAPPDATA%\password-safe-client\extension`: the extracted extension (updated in place; just click reload).
+`%APPDATA%\password-safe-client\`: `config.json` (no secrets; may include `fallback_host` / `fallback_port`), `known_hosts` (TOFU fingerprints), `client.log` (1 MB rotation ×3, no secrets), `control.json` (local control port + random token), `com.tjut_lfl.password_safe.json` (native host manifest). `%LOCALAPPDATA%\password-safe-client\extension`: the extracted extension (updated in place; just click reload).
 
 ## Security
 

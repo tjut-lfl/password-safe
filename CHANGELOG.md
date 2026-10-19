@@ -1,5 +1,19 @@
 # 更新日志 / Changelog
 
+## v0.3.4-beta（2026-10-19）
+**中文**
+- 托盘客户端：支持 **备用主机**（`fallback_host` / `fallback_port`）。每次重连先试主主机，超时/拒绝后再自动试备用；日志与托盘会标明当前经哪条路径（「经 10.x…」或「经备用主机 …」）
+- 设置页新增「备用主机 / 备用端口」；配置里可把主主机填 WireGuard 内网，备用填服务器公网 IP（勿把公网 IP 写进仓库文档示例以外的隐私位置——用户本机 config.json 即可）
+- SSH 保活默认由 30s 改为 **15s**，超时检测 10s，更快发现假在线隧道
+- 仅客户端变更，服务端与浏览器扩展无需升级
+
+**English**
+- Tray client: optional **fallback host** (`fallback_host` / `fallback_port`). Each reconnect tries the primary first, then the fallback on timeout/refused; logs and tray show the active path (“via …” / “via fallback …”)
+- Setup page adds Fallback host/port; put a WireGuard/VPN address as primary and the server public IP as fallback in local `config.json`
+- SSH keepalive default **15s** (was 30s), timeout 10s, so dead tunnels are detected sooner
+- Client-only; no server or extension upgrade required
+
+
 ## v0.3.3-beta（2026-10-19）
 **中文**
 - 修复：登录表单先 `hidden`/后显示时，内容脚本不重新扫描，密码框不出现 🔒（MutationObserver 增加 class/style 监听 + 定时补扫；改进 `visible()` 判断）

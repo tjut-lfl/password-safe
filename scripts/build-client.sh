@@ -2,7 +2,7 @@
 # 交叉编译桌面客户端：Windows（托盘，GUI 子系统）、Linux（托盘）、macOS（无托盘模式）
 set -euo pipefail
 cd "$(dirname "$0")/.."
-VER="${VERSION:-v0.3.2-beta}"; OUT=dist; mkdir -p "$OUT"
+VER="${VERSION:-v0.3.4-beta}"; OUT=dist; mkdir -p "$OUT"
 LD="-s -w -X main.Version=$VER"
 for t in windows/amd64 windows/arm64 linux/amd64 darwin/amd64 darwin/arm64; do
   os=${t%/*}; arch=${t#*/}; name="password-safe-client-$VER-$os-$arch"; d=$(mktemp -d)/$name; mkdir -p "$d"

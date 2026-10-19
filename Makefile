@@ -1,6 +1,6 @@
 .PHONY: build test install tidy clean smoke extensions release
 
-VERSION ?= v0.3.3-beta
+VERSION ?= v0.3.4-beta
 LDFLAGS := -X github.com/tjut-lfl/password-safe/internal/cli.Version=$(VERSION)
 
 PREFIX ?= /usr/local

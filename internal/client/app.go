@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 )
 
@@ -195,6 +196,12 @@ func (a *App) pageSetup(w http.ResponseWriter, r *http.Request) {
 		c := a.Config()
 		c.Host = r.FormValue("host")
 		c.Port = atoiDef(r.FormValue("port"), 22)
+		c.FallbackHost = strings.TrimSpace(r.FormValue("fhost"))
+		if fp := strings.TrimSpace(r.FormValue("fport")); fp == "" {
+			c.FallbackPort = 0
+		} else {
+			c.FallbackPort = atoiDef(fp, 0)
+		}
 		c.User = r.FormValue("user")
 		c.KeyPath = r.FormValue("key")
 		c.LocalPort = atoiDef(r.FormValue("lport"), 8787)

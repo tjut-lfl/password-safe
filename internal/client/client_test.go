@@ -38,6 +38,58 @@ func TestConfigRoundTrip(t *testing.T) {
 	}
 }
 
+
+func TestEndpoints(t *testing.T) {
+	c := Config{Host: "10.0.0.1", Port: 22}
+	eps := c.endpoints()
+	if len(eps) != 1 || eps[0].Host != "10.0.0.1" || eps[0].ViaFallback {
+		t.Fatalf("primary only: %+v", eps)
+	}
+	c.FallbackHost = "203.0.113.10"
+	eps = c.endpoints()
+	if len(eps) != 2 || !eps[1].ViaFallback || eps[1].Port != 22 || eps[1].Host != "203.0.113.10" {
+		t.Fatalf("with fallback: %+v", eps)
+	}
+	c.FallbackPort = 2222
+	eps = c.endpoints()
+	if eps[1].Port != 2222 {
+		t.Fatalf("custom fallback port: %+v", eps)
+	}
+	// same as primary → no second endpoint
+	c.FallbackHost, c.FallbackPort = "10.0.0.1", 22
+	if n := len(c.endpoints()); n != 1 {
+		t.Fatalf("duplicate should collapse, got %d", n)
+	}
+	c.FallbackHost = "  "
+	if n := len(c.endpoints()); n != 1 {
+		t.Fatalf("blank fallback: %d", n)
+	}
+}
+
+func TestConfigFallbackRoundTrip(t *testing.T) {
+	d := t.TempDir()
+	c := DefaultConfig()
+	c.Host, c.KeyPath = "10.0.0.1", "/k.pem"
+	c.FallbackHost, c.FallbackPort = "203.0.113.10", 22
+	if err := SaveConfig(d, c); err != nil {
+		t.Fatal(err)
+	}
+	c2, ok, err := LoadConfig(d)
+	if err != nil || !ok {
+		t.Fatal(ok, err)
+	}
+	if c2.FallbackHost != "203.0.113.10" || c2.FallbackPort != 22 {
+		t.Fatalf("%+v", c2)
+	}
+	if err := c2.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	c2.FallbackPort = 70000
+	if c2.Validate() == nil {
+		t.Fatal("bad fallback port accepted")
+	}
+}
+
 func TestBackoff(t *testing.T) {
 	b := Backoff{Min: time.Second, Max: 8 * time.Second}
 	want := []time.Duration{1, 2, 4, 8, 8}

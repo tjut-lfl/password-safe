@@ -47,6 +47,8 @@ var dict = map[string][2]string{
 	"backup_tip":   {"服务端备份需要登录令牌：请在浏览器插件中解锁后点「服务端备份」", "Server backup needs a session token: unlock in the extension and click “Server backup”"},
 	"backup_lock":  {"保险箱已锁定：请先在插件中解锁，再点插件里的「服务端备份」", "Vault is locked: unlock in the extension, then click “Server backup” there"},
 	"not_conn":     {"隧道未连接，无法备份", "Tunnel not connected"},
+	"via_host":     {"经", "via"},
+	"via_fallback": {"经备用主机", "via fallback"},
 }
 
 func T(key string) string {
