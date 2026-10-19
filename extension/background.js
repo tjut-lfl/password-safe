@@ -227,20 +227,24 @@ const handlers = {
       const s = await getStep(sender.tab?.id, cred.host);
       if (s) cred.username = s.typedUsername || s.username || '';
     }
-    // 已有相同凭据则不打扰
+    // 先写入 pending，再做可能较慢的条目比对，避免 SPA 登录时内容脚本抢先 takePending 拿到空
+    if (sender.tab?.id != null) await setPending(sender.tab.id, cred);
     if (await getSession()) {
       try {
         const list = await entriesForHost(cred.host);
         const same = list.find(e => (e.username || '') === (cred.username || ''));
         if (same) {
           const full = await api('/api/v1/entries/' + encodeURIComponent(same.id));
-          if (full.password === cred.password) return { skip: true };
+          if (full.password === cred.password) {
+            if (sender.tab?.id != null) await popPending(sender.tab.id);
+            return { skip: true };
+          }
           cred.isUpdate = true;
+          if (sender.tab?.id != null) await setPending(sender.tab.id, cred);
         }
       } catch (_) {}
     }
-    await setPending(sender.tab.id, cred);
-    return { ok: true };
+    return { ok: true, isUpdate: !!cred.isUpdate };
   },
   async exportBundle({ passphrase }) {
     if (!passphrase || passphrase.length < 8) throw new Error('导出口令至少 8 位');

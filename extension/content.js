@@ -7,7 +7,15 @@ if (typeof globalThis.chrome === 'undefined' && typeof globalThis.browser !== 'u
   const host = location.hostname.replace(/^www\./, '').toLowerCase();
   const send = (msg) => new Promise(r => { try { chrome.runtime.sendMessage(msg, res => r(chrome.runtime.lastError ? { ok: false } : res || { ok: false })); } catch (_) { r({ ok: false }); } });
 
-  const visible = el => !!(el && el.offsetParent !== null && !el.disabled && !el.readOnly && el.getBoundingClientRect().width > 0);
+  // 不用 offsetParent：父级 display:none→再显示、position:fixed 时 offsetParent 常为 null，会导致永不装饰
+  const visible = el => {
+    if (!el || el.disabled || el.readOnly) return false;
+    const r = el.getBoundingClientRect();
+    if (r.width <= 0 || r.height <= 0) return false;
+    const st = getComputedStyle(el);
+    if (st.visibility === 'hidden' || st.display === 'none' || Number(st.opacity) === 0) return false;
+    return true;
+  };
   const pwFields = (root = document) => [...root.querySelectorAll('input[type=password]')].filter(visible);
   function userFieldFor(pw) {
     const scope = pw.form || document;
@@ -135,7 +143,8 @@ if (typeof globalThis.chrome === 'undefined' && typeof globalThis.browser !== 'u
 
   // ---- 提交检测与保存提示 ----
   let lastCapture = null;
-  function capture(scope) {
+  let captureInFlight = null;
+  async function capture(scope) {
     const pws = pwFields(scope || document).concat(scope ? [] : []);
     const all = pws.filter(p => p.value);
     if (!all.length) return;
@@ -145,9 +154,19 @@ if (typeof globalThis.chrome === 'undefined' && typeof globalThis.browser !== 'u
     let u = userFieldFor(all[0]);
     if (!u || !u.value) u = (all[0].form || document).querySelector('input[autocomplete=username],input[name*=user i],input[name*=email i],input[type=email]') || u;
     const cred = { host, username: u ? u.value.trim() : '', password: pw.value, url: location.origin };
-    if (lastCapture && lastCapture.password === cred.password && lastCapture.username === cred.username) return;
+    if (lastCapture && lastCapture.password === cred.password && lastCapture.username === cred.username && captureInFlight) return;
     lastCapture = cred;
-    send({ type: 'offerSave', ...cred });
+    // 必须 await：原先 fire-and-forget + 1.5s 后 takePending，SPA 登录时 offerSave 里的 API 常慢于 1.5s，保存条永远不出现
+    const run = (async () => {
+      const r = await send({ type: 'offerSave', ...cred });
+      if (!r.ok || (r.data && r.data.skip)) return;
+      // 同文档（fetch 登录不跳转）：立刻弹出；若页面已卸载则 pending 留给下页 checkPending
+      if (!document.body) return;
+      await send({ type: 'takePending' });
+      showSaveBar({ ...cred, isUpdate: !!(r.data && r.data.isUpdate) });
+    })();
+    captureInFlight = run;
+    try { await run; } finally { if (captureInFlight === run) captureInFlight = null; }
   }
   function captureUser(scope) {
     if (pwFields().length) return;
@@ -223,6 +242,13 @@ if (typeof globalThis.chrome === 'undefined' && typeof globalThis.browser !== 'u
 
   checkPending();
   decorate();
-  new MutationObserver(() => decorate()).observe(document.documentElement, { childList: true, subtree: true });
+  // 登录框常先 hidden 再显示：只听 childList 会漏掉 class/style 变化
+  new MutationObserver(() => decorate()).observe(document.documentElement, {
+    childList: true,
+    subtree: true,
+    attributes: true,
+    attributeFilter: ['class', 'style', 'hidden', 'type']
+  });
+  setInterval(decorate, 2000);
   void origSend;
 })();

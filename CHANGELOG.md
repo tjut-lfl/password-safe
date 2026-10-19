@@ -1,5 +1,18 @@
 # 更新日志 / Changelog
 
+## v0.3.3-beta（2026-10-19）
+**中文**
+- 修复：登录表单先 `hidden`/后显示时，内容脚本不重新扫描，密码框不出现 🔒（MutationObserver 增加 class/style 监听 + 定时补扫；改进 `visible()` 判断）
+- 修复：SPA/fetch 登录时「保存到密码保险箱」提示经常出不来——`offerSave` 先写 pending 再比对条目；内容脚本 await 后立即弹出（不再只依赖 1.5s 后的 takePending 竞态）
+- 单测：`extension/test/match_test.mjs` 覆盖 www/apex 与同站别名匹配（匹配逻辑本身已正确，本问题不是 www 误判）
+- 仅扩展变更，服务端无需升级
+
+**English**
+- Fix: password fields that start `hidden` and become visible later never got the 🔒 icon (observe class/style attributes + periodic rescan; more reliable `visible()`)
+- Fix: save prompt often missing after SPA/fetch logins — `offerSave` writes pending before slow entry lookup; content script awaits and shows the bar immediately (no longer races a 1.5s takePending)
+- Test: `extension/test/match_test.mjs` for www/apex and site-alias matching (matching was already correct; this was not a www mismatch)
+- Extension-only; no server upgrade required
+
 ## v0.3.2-beta（2026-10-18）
 **中文**
 - 会话默认有效期由 30 分钟改为 **6 小时**；可用环境变量 `PASSWORD_SAFE_SESSION_TTL`（如 `6h`）或 `serve --ttl 6h` 配置
