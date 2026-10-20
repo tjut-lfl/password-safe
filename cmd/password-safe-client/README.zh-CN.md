@@ -1,4 +1,4 @@
-# Password Safe 桌面客户端（测试版 v0.3.4-beta）
+# Password Safe 桌面客户端（测试版 v0.3.5-beta）
 
 [English](README.md) | 中文
 
@@ -13,7 +13,7 @@
 
 ## 首次运行
 
-1. 解压 `password-safe-client-v0.3.4-beta-windows-amd64.zip`，把 `password-safe-client.exe` 放到一个固定位置（例如 `%LOCALAPPDATA%\Programs\password-safe-client\`），之后不要再移动。
+1. 解压 `password-safe-client-v0.3.5-beta-windows-amd64.zip`，把 `password-safe-client.exe` 放到一个固定位置（例如 `%LOCALAPPDATA%\Programs\password-safe-client\`），之后不要再移动。
 2. 双击运行。浏览器会打开两个本地页面：
    - **连接设置**：填服务器地址（主主机）、SSH 端口（22）、可选的**备用主机**（主主机连不上时自动改连，例如把 WireGuard 内网当地址、服务器公网 IP 当备用）、用户名（如 `ubuntu`）、私钥路径。点「保存并连接」。
    - **插件安装引导**：点「打开 Chrome/Edge 扩展页」→ 打开「开发者模式」→「加载已解压的扩展程序」→ 选页面上显示的文件夹（可一键复制路径）。
@@ -65,6 +65,7 @@ password-safe-client.exe --version
 
 ## 限制
 
+- **海外服务器**：从国内直连海外主机的 SSH 可能间歇超时或中断（跨境线路问题，不是本程序独有）。可用 VPN/WireGuard、换网络，或把服务部署得更近；详见仓库根目录 README「已知限制：海外服务器与 SSH 隧道」。
 - 浏览器不允许程序静默安装扩展，第一次需要你按引导手动加载一次。
 - Windows 的托盘界面没有在真实 Windows 上测试过（隧道逻辑在 Linux 上用自动化测试验证过）。
 - macOS 版本无托盘（托盘需要 cgo），以无托盘模式运行，用设置页管理。

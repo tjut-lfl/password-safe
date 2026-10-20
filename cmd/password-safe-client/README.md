@@ -1,4 +1,4 @@
-# Password Safe desktop client (beta v0.3.4-beta)
+# Password Safe desktop client (beta v0.3.5-beta)
 
 English | [中文](README.zh-CN.md)
 
@@ -13,7 +13,7 @@ A small Windows tray app (Linux has a tray too; macOS runs without a tray). Once
 
 ## First run
 
-1. Unzip `password-safe-client-v0.3.4-beta-windows-amd64.zip` and put `password-safe-client.exe` somewhere permanent (e.g. `%LOCALAPPDATA%\Programs\password-safe-client\`).
+1. Unzip `password-safe-client-v0.3.5-beta-windows-amd64.zip` and put `password-safe-client.exe` somewhere permanent (e.g. `%LOCALAPPDATA%\Programs\password-safe-client\`).
 2. Double-click it. Two local pages open in your browser:
    - **Connection settings** — primary server host, SSH port (22), optional **fallback host** (tried automatically when primary fails — e.g. VPN/WireGuard address as primary, server public IP as fallback), user (e.g. `ubuntu`), private key path. Click *Save & connect*.
    - **Extension guide** — *Open Chrome/Edge extensions page* → enable *Developer mode* → *Load unpacked* → pick the folder shown (copy button provided).
@@ -49,6 +49,7 @@ No arguments = tray mode (the native host is re-registered on every start). Laun
 
 ## Limits
 
+- **Overseas servers:** SSH from some networks (especially mainland China) to a host abroad may time out or drop intermittently—that is a cross-border path issue, not unique to this app. Use a VPN/WireGuard hop, switch networks, or host closer to you; see “Known limitation: overseas servers and the SSH tunnel” in the root README.
 - Browsers don't allow silent extension installs, so you load it once by hand.
 - The Windows tray UI has not been tested on real Windows yet (tunnel logic is covered by automated tests on Linux).
 - macOS build has no tray (needs cgo). Firefox extension has no native messaging.

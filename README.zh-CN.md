@@ -1,4 +1,4 @@
-# Password Safe — 自建密码保险箱（测试版 v0.3.0-beta）
+# Password Safe — 自建密码保险箱（测试版 v0.3.5-beta）
 
 [English](README.md) | **简体中文**
 
@@ -20,6 +20,17 @@
 ```
 服务端永不对公网监听，只需开放 SSH 22 端口。
 
+## 已知限制：海外服务器与 SSH 隧道
+
+本项目的远程访问依赖本机到服务器的 **SSH 隧道**（托盘客户端或手动 `ssh -L`）。若服务器部署在**海外**（例如 AWS 东京、新加坡等），从国内网络直连 SSH（TCP 22）可能出现：
+
+- 偶发连不上、长时间 `i/o timeout`
+- 已连接后 keepalive 超时、隧道中断，托盘显示「未连接」
+- WireGuard / VPN 界面显示“已连接”，但内网 SSH（如 `10.77.0.x`）仍不通（假在线）
+
+这通常是 **跨境网络路径不稳定**，不是保险箱程序本身故障。可选用 VPN/WireGuard、换网络（如手机热点），或把服务部署在网络更近的地区。需要完全本机、不依赖公网隧道时，可参考独立项目 [password-safe-local](https://github.com/tjut-lfl/password-safe-local)。
+
+
 ## 快速开始
 ```bash
 # 服务器（Linux）：下载 Release 中对应架构的压缩包，或自行编译
@@ -39,7 +50,7 @@ ssh -i ~/key.pem -N -L 8787:127.0.0.1:8787 ubuntu@<your-server-ip>
 然后安装浏览器扩展，见 [extension/README.zh-CN.md](extension/README.zh-CN.md)。
 
 
-## 桌面客户端（Windows 托盘，v0.3.4-beta）
+## 桌面客户端（Windows 托盘，v0.3.5-beta）
 
 不想每次手敲 `ssh -L` 命令？到 Releases 下载 `password-safe-client-…-windows-amd64.zip`，运行 `password-safe-client.exe` 即可：后台维持 SSH 隧道（纯 Go、自动重连、可选备用主机、主机密钥首次信任），托盘显示状态，自动解压内置插件并打开安装引导，插件弹窗里能看到隧道状态并一键重连（原生消息）。详见 [cmd/password-safe-client/README.zh-CN.md](cmd/password-safe-client/README.zh-CN.md)。
 

@@ -1,4 +1,4 @@
-# Password Safe — Self-hosted password vault (beta v0.3.0-beta)
+# Password Safe — Self-hosted password vault (beta v0.3.5-beta)
 
 **English** | [简体中文](README.zh-CN.md)
 
@@ -20,6 +20,17 @@ Browser extension ──▶ local 127.0.0.1:8787 ══SSH tunnel══▶ serve
 ```
 The server never listens on a public interface; only SSH port 22 needs to be open.
 
+## Known limitation: overseas servers and the SSH tunnel
+
+Remote access depends on an **SSH tunnel** from your computer to the server (tray client or manual `ssh -L`). If the server is **overseas** (e.g. AWS Tokyo or Singapore), a direct SSH connection (TCP 22) from some networks—especially in mainland China—may:
+
+- Fail intermittently with long `i/o timeout`s
+- Drop after connect (keepalive timeout), so the tray shows disconnected
+- Show WireGuard/VPN as “connected” while SSH to the VPN address (e.g. `10.77.0.x`) still fails (“false online”)
+
+That is usually an **unstable cross-border network path**, not a vault bug. Workarounds: use a VPN/WireGuard hop, switch networks (e.g. phone hotspot), or host the server closer to you. For a fully local setup with no public tunnel, see the separate project [password-safe-local](https://github.com/tjut-lfl/password-safe-local).
+
+
 ## Quick start
 ```bash
 # Server (Linux): download the archive for your architecture from Releases, or build it
@@ -39,7 +50,7 @@ ssh -i ~/key.pem -N -L 8787:127.0.0.1:8787 ubuntu@<your-server-ip>
 Then install the browser extension, see [extension/README.md](extension/README.md).
 
 
-## Desktop client (Windows tray, v0.3.0-beta)
+## Desktop client (Windows tray, v0.3.5-beta)
 
 Don't want to type the `ssh -L` command every time? Download `password-safe-client-…-windows-amd64.zip` from Releases and run `password-safe-client.exe`. It keeps the SSH tunnel up in the background (pure Go, auto-reconnect, host-key TOFU), shows status in the tray, extracts the bundled extension and opens an install guide, and lets the extension popup show tunnel status with one-click reconnect (native messaging). See [cmd/password-safe-client/README.md](cmd/password-safe-client/README.md).
 
